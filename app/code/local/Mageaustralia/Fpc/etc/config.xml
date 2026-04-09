@@ -207,7 +207,7 @@ fbclid</miss_uri_params>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
                 <turbo_cms>1</turbo_cms>
-                <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/</turbo_excluded_paths>
+                <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/,/catalog/product_compare/,/newsletter/,/sendfriend/,/tag/,/poll/</turbo_excluded_paths>
             </fpc>
         </system>
     </default>
