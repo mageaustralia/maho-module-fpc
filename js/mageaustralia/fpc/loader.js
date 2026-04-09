@@ -4,11 +4,27 @@
  * Copyright (c) 2026 Mage Australia (https://mageaustralia.com.au)
  * Licensed under the Open Software License v3.0 (OSL-3.0)
  *
- * Loads dynamic content (cart count, account links, messages, etc.) via AJAX
- * on every page view — both initial load and Turbo navigations.
+ * On DOMContentLoaded, finds all [data-fpc-block] placeholder elements
+ * plus badge elements ([data-cart-count], [data-compare-count], [data-wishlist-count]),
+ * batches them into a single AJAX call to /fpc/dynamic, and injects
+ * the returned content.
  */
 (function () {
     'use strict';
+
+    // Immediately apply cached badge counts from localStorage (prevents stale-count flash)
+    try {
+        var cachedQty = localStorage.getItem('fpc_cart_qty');
+        if (cachedQty !== null) {
+            var el = document.querySelector('[data-cart-count]');
+            if (el) {
+                var qty = parseInt(cachedQty, 10) || 0;
+                el.textContent = String(qty);
+                if (qty > 0) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            }
+        }
+    } catch(e) {}
 
     function loadDynamicBlocks() {
         var placeholders = document.querySelectorAll('[data-fpc-block]');
@@ -18,6 +34,7 @@
             wishlist_count: document.querySelector('[data-wishlist-count]')
         };
 
+        // Collect block names from placeholders
         var names = [];
         var nameSet = {};
         for (var i = 0; i < placeholders.length; i++) {
@@ -28,6 +45,7 @@
             }
         }
 
+        // Always request badge blocks if their elements exist
         for (var badge in badges) {
             if (badges[badge] && !nameSet[badge]) {
                 names.push(badge);
@@ -35,95 +53,99 @@
             }
         }
 
-        // Always fetch — even with no blocks, we need a fresh form_key
-        var query = names.length > 0 ? '?blocks=' + encodeURIComponent(names.join(',')) : '';
+        if (names.length === 0) {
+            return;
+        }
 
-        fetch('/fpc/dynamic/' + query, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (!data.success || !data.blocks) return;
+        var url = '/fpc/dynamic?blocks=' + encodeURIComponent(names.join(','));
 
-            var currentPlaceholders = document.querySelectorAll('[data-fpc-block]');
-            for (var j = 0; j < currentPlaceholders.length; j++) {
-                var blockName = currentPlaceholders[j].getAttribute('data-fpc-block');
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+        xhr.onload = function () {
+            if (xhr.status !== 200) {
+                return;
+            }
+
+            var data;
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch (e) {
+                return;
+            }
+
+            if (!data.success || !data.blocks) {
+                return;
+            }
+
+            // Inject content into data-fpc-block placeholders
+            for (var j = 0; j < placeholders.length; j++) {
+                var blockName = placeholders[j].getAttribute('data-fpc-block');
                 if (blockName && data.blocks[blockName] !== undefined) {
-                    currentPlaceholders[j].innerHTML = data.blocks[blockName];
+                    placeholders[j].innerHTML = data.blocks[blockName];
                 }
             }
 
-            // Update DaisyUI theme badges
-            updateBadge('[data-cart-count]', data.blocks.cart_count || '0');
-            updateBadge('[data-compare-count]', data.blocks.compare_count || '0');
-            updateBadge('[data-wishlist-count]', data.blocks.wishlist_count || '0');
+            // Update badge counts and visibility
+            // cart_count may be in blocks (dynamic block config) or top-level cart_qty
+            var cartCount = (data.blocks && data.blocks.cart_count) || data.cart_qty || '0';
+            var compareCount = (data.blocks && data.blocks.compare_count) || data.compare_count || '0';
+            var wishlistCount = (data.blocks && data.blocks.wishlist_count) || data.wishlist_count || '0';
+            updateBadge('[data-cart-count]', cartCount);
+            updateBadge('[data-compare-count]', compareCount);
+            updateBadge('[data-wishlist-count]', wishlistCount);
 
+            // Cache counts in localStorage for instant display on next page load
+            try {
+                localStorage.setItem('fpc_cart_qty', String(cartCount));
+            } catch(e) {}
+
+            // Show/hide compare link based on count
             var compareLink = document.querySelector('[data-fpc-compare]');
             if (compareLink) {
                 var compareCount = parseInt(data.blocks.compare_count || '0', 10);
-                compareLink.style.cssText = compareCount > 0 ? '' : 'display:none !important';
+                if (compareCount > 0) {
+                    compareLink.classList.remove('hidden');
+                } else {
+                    compareLink.classList.add('hidden');
+                }
             }
 
-            // Update base Maho theme cart count (.skip-cart .count)
-            var baseCount = document.querySelector('.skip-cart .count');
-            if (baseCount) {
-                var qty = data.cart_qty || 0;
-                baseCount.textContent = String(qty);
-                baseCount.className = 'count' + (qty === 0 ? ' count-0' : '');
-            }
-
-            // Update form keys everywhere
+            // Update form keys on the page
             if (data.form_key) {
                 var formKeyInputs = document.querySelectorAll('input[name="form_key"]');
                 for (var k = 0; k < formKeyInputs.length; k++) {
                     formKeyInputs[k].value = data.form_key;
                 }
-                // Also update inline form_key references in onclick handlers
-                if (typeof Mage !== 'undefined' && Mage.Cookies) {
-                    // Maho stores form_key in cookie too
-                }
             }
+        };
 
-            // Re-init minicart if it exists (base theme)
-            if (typeof window.minicart !== 'undefined' && data.form_key) {
-                window.minicart.formKey = data.form_key;
-            }
-        })
-        .catch(function() {});
+        xhr.send();
     }
 
+    /**
+     * Update a badge element's text and visibility.
+     */
     function updateBadge(selector, value) {
         var el = document.querySelector(selector);
-        if (!el) return;
+        if (!el) {
+            return;
+        }
 
         var count = parseInt(value, 10) || 0;
+        el.textContent = String(count);
+
         if (count > 0) {
-            el.textContent = String(count);
-            el.style.display = '';
+            el.classList.remove('hidden');
         } else {
-            el.innerHTML = '&nbsp;';
-            el.style.display = 'none';
+            el.classList.add('hidden');
         }
     }
 
-    // Expose for manual re-trigger
-    window.fpcLoadDynamicBlocks = loadDynamicBlocks;
-
-    // Guard against double-fire on initial load (turbo:load + DOMContentLoaded both fire)
-    var initialLoaded = false;
-
-    // Turbo navigation — fires on every page (initial + navigations)
-    document.addEventListener('turbo:load', function() {
-        initialLoaded = true;
-        loadDynamicBlocks();
-    });
-
-    // Fallback for non-Turbo (or if Turbo hasn't loaded yet on initial page)
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            if (!initialLoaded) loadDynamicBlocks();
-        });
-    } else if (!initialLoaded) {
+        document.addEventListener('DOMContentLoaded', loadDynamicBlocks);
+    } else {
         loadDynamicBlocks();
     }
 })();

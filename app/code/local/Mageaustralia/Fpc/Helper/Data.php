@@ -55,26 +55,6 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return Mage::getStoreConfigFlag('system/fpc/customer_groups');
     }
 
-    public function varyByCurrency(): bool
-    {
-        return Mage::getStoreConfigFlag('system/fpc/vary_currency');
-    }
-
-    public function varyByTaxZone(): bool
-    {
-        return Mage::getStoreConfigFlag('system/fpc/vary_tax');
-    }
-
-    public function varyByGeoCountry(): bool
-    {
-        return Mage::getStoreConfigFlag('system/fpc/vary_geo');
-    }
-
-    public function gzipOnly(): bool
-    {
-        return Mage::getStoreConfigFlag('system/fpc/gzip_only');
-    }
-
     // ── Turbo Drive ────────────────────────────────────────────────
 
     public function isTurboEnabled(): bool
@@ -129,6 +109,11 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
         $raw = Mage::getStoreConfig('system/fpc/dynamic_blocks');
         $blocks = [];
+
+        // JSON string from admin config — decode first
+        if (is_string($raw) && str_starts_with(trim($raw), '{')) {
+            $raw = json_decode($raw, true) ?: [];
+        }
 
         // New format: serialized array from admin table UI
         if (is_array($raw)) {
@@ -293,45 +278,6 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
                 : Mage_Customer_Model_Group::NOT_LOGGED_IN_ID;
             if ($groupId !== Mage_Customer_Model_Group::NOT_LOGGED_IN_ID) {
                 $suffix .= '__g' . $groupId;
-            }
-        }
-
-        // Currency variation
-        if ($this->varyByCurrency()) {
-            $currency = Mage::app()->getStore()->getCurrentCurrencyCode();
-            $baseCurrency = Mage::app()->getStore()->getBaseCurrencyCode();
-            if ($currency !== $baseCurrency) {
-                $suffix .= '__cur' . $this->sanitizePathSegment($currency);
-            }
-        }
-
-        // Tax zone variation (based on default tax destination country)
-        if ($this->varyByTaxZone()) {
-            $taxCountry = '';
-            $session = Mage::getSingleton('customer/session');
-            if ($session->isLoggedIn()) {
-                $address = $session->getCustomer()->getDefaultShippingAddress();
-                if ($address) {
-                    $taxCountry = $address->getCountryId();
-                }
-            }
-            if ($taxCountry === '') {
-                // Use Cloudflare/GeoIP header or default tax country
-                $taxCountry = $_SERVER['HTTP_CF_IPCOUNTRY']
-                    ?? (string) Mage::getStoreConfig('tax/defaults/country');
-            }
-            if ($taxCountry !== '' && $taxCountry !== (string) Mage::getStoreConfig('tax/defaults/country')) {
-                $suffix .= '__tax' . $this->sanitizePathSegment($taxCountry);
-            }
-        }
-
-        // GeoIP country variation (via Cloudflare CF-IPCountry header or similar)
-        if ($this->varyByGeoCountry()) {
-            $geoCountry = $_SERVER['HTTP_CF_IPCOUNTRY']
-                ?? $_SERVER['HTTP_X_COUNTRY_CODE']
-                ?? '';
-            if ($geoCountry !== '') {
-                $suffix .= '__geo' . $this->sanitizePathSegment($geoCountry);
             }
         }
 
