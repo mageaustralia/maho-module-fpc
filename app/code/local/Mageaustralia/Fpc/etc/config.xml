@@ -119,9 +119,14 @@
                 </observers>
             </application_clean_cache>
 
-            <!-- AJAX framework: intercept responses when isEasyAjax is present -->
+            <!-- Refresh actions: flush FPC after cart/wishlist/compare actions -->
             <controller_action_postdispatch>
                 <observers>
+                    <mageaustralia_fpc_refresh>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onRefreshAction</method>
+                    </mageaustralia_fpc_refresh>
                     <mageaustralia_fpc_ajax>
                         <type>singleton</type>
                         <class>Mageaustralia_Fpc_Model_Ajax_Observer</class>
@@ -131,6 +136,31 @@
             </controller_action_postdispatch>
         </events>
     </global>
+    <crontab>
+        <jobs>
+            <mageaustralia_fpc_async_flush>
+                <schedule>
+                    <cron_expr>* * * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::processAsyncFlush</model>
+                </run>
+            </mageaustralia_fpc_async_flush>
+        </jobs>
+    </crontab>
+    <adminhtml>
+        <events>
+            <admin_system_config_changed_section_mageaustralia_fpc>
+                <observers>
+                    <mageaustralia_fpc_config_changed>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onFpcConfigChanged</method>
+                    </mageaustralia_fpc_config_changed>
+                </observers>
+            </admin_system_config_changed_section_mageaustralia_fpc>
+        </events>
+    </adminhtml>
     <admin>
         <routers>
             <adminhtml>
@@ -197,12 +227,27 @@ utm_source
 utm_content
 utm_term
 gclid
-fbclid</miss_uri_params>
+fbclid
+srsltid</miss_uri_params>
                 <customer_groups>0</customer_groups>
                 <vary_currency>0</vary_currency>
                 <vary_tax>0</vary_tax>
                 <vary_geo>0</vary_geo>
                 <gzip_only>0</gzip_only>
+                <flush_on_product_save>1</flush_on_product_save>
+                <flush_on_stock_change>1</flush_on_stock_change>
+                <refresh_actions>checkout_cart_add
+checkout_cart_delete
+checkout_cart_updatePost
+catalog_product_compare_add
+catalog_product_compare_clear
+catalog_product_compare_remove
+wishlist_index_add
+wishlist_index_remove
+wishlist_index_update
+wishlist_index_allcart
+checkout_onepage_success
+newsletter_subscriber_new</refresh_actions>
                 <turbo_enabled>1</turbo_enabled>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
