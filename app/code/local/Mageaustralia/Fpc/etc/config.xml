@@ -97,6 +97,17 @@
                 </observers>
             </cms_block_save_after>
 
+            <!-- Invalidation: blog post save -->
+            <maho_blog_post_save_after>
+                <observers>
+                    <mageaustralia_fpc_blog>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onBlogPostSave</method>
+                    </mageaustralia_fpc_blog>
+                </observers>
+            </maho_blog_post_save_after>
+
             <!-- Invalidation: stock change -->
             <cataloginventory_stock_item_save_after>
                 <observers>
@@ -211,7 +222,10 @@
 cms_page_view
 catalog_product_view
 catalog_category_view
-catalog_category_layered</cache_actions>
+catalog_category_layered
+blog_index_index
+blog_index_category
+blog_index_view</cache_actions>
                 <dynamic_blocks>cart_count:[data-cart-count]:text
 compare_count:[data-compare-count]:text
 wishlist_count:[data-wishlist-count]:text

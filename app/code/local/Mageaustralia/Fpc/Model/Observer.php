@@ -300,6 +300,55 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: cataloginventory_stock_item_save_after
      */
+    // ── Invalidation: Blog Post Save ────────────────────────────────
+
+    /**
+     * Flush blog-related FPC entries when a blog post is saved.
+     *
+     * Event: maho_blog_post_save_after
+     */
+    public function onBlogPostSave(Varien_Event_Observer $observer): void
+    {
+        if (!$this->getHelper()->isEnabled()) {
+            return;
+        }
+
+        $post = $observer->getEvent()->getObject();
+        if (!$post || !$post->getId()) {
+            return;
+        }
+
+        $paths = [];
+
+        // Purge the individual post URL
+        $urlKey = $post->getUrlKey();
+        if ($urlKey) {
+            $paths[] = 'blog/' . $urlKey;
+        }
+
+        // Purge the blog index page
+        $paths[] = 'blog';
+
+        // Purge blog category pages this post belongs to
+        $categoryIds = $post->getCategoryIds();
+        if (is_array($categoryIds)) {
+            foreach ($categoryIds as $catId) {
+                try {
+                    $category = Mage::getModel('maho_blog/category')->load($catId);
+                    if ($category->getId() && $category->getUrlKey()) {
+                        $paths[] = 'blog/category/' . $category->getUrlKey();
+                    }
+                } catch (\Exception $e) {
+                    // Skip
+                }
+            }
+        }
+
+        if (!empty($paths)) {
+            $this->getCache()->purgeByPaths($paths);
+        }
+    }
+
     public function onStockSave(Varien_Event_Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
