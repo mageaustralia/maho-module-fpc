@@ -146,6 +146,14 @@
                     <model>mageaustralia_fpc/observer::processAsyncFlush</model>
                 </run>
             </mageaustralia_fpc_async_flush>
+            <mageaustralia_fpc_cleanup>
+                <schedule>
+                    <cron_expr>0 */6 * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::cleanExpiredCache</model>
+                </run>
+            </mageaustralia_fpc_cleanup>
         </jobs>
     </crontab>
     <adminhtml>
@@ -202,13 +210,13 @@
                 <cache_actions>cms_index_index
 cms_page_view
 catalog_product_view
-catalog_category_view</cache_actions>
+catalog_category_view
+catalog_category_layered</cache_actions>
                 <dynamic_blocks>cart_count:[data-cart-count]:text
 compare_count:[data-compare-count]:text
 wishlist_count:[data-wishlist-count]:text
 account_links:[data-fpc-block="account_links"]:html
 messages:[data-fpc-block="messages"]:html</dynamic_blocks>
-                <lazy_blocks></lazy_blocks>
                 <bypass_handles>checkout_cart_index
 checkout_onepage_index
 customer_account_login

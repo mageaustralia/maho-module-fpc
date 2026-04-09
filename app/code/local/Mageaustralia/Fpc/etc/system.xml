@@ -199,16 +199,7 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </dynamic_blocks>
-                        <lazy_blocks translate="label comment">
-                            <label>Lazy Blocks</label>
-                            <comment>Block names to load lazily via AJAX (one per line).</comment>
-                            <frontend_type>textarea</frontend_type>
-                            <config_path>system/fpc/lazy_blocks</config_path>
-                            <sort_order>20</sort_order>
-                            <show_in_default>1</show_in_default>
-                            <show_in_website>0</show_in_website>
-                            <show_in_store>0</show_in_store>
-                        </lazy_blocks>
+
                     </fields>
                 </blocks>
                 <turbo translate="label" module="mageaustralia_fpc">
