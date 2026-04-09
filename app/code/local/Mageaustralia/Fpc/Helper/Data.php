@@ -172,16 +172,6 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return $this->dynamicBlocksCache;
     }
 
-    /**
-     * Parse lazy block names from config.
-     *
-     * @return string[]
-     */
-    public function getLazyBlocks(): array
-    {
-        $raw = (string) Mage::getStoreConfig('system/fpc/lazy_blocks');
-        return $this->parseLines($raw);
-    }
 
     /**
      * Parse bypass handles from config.
