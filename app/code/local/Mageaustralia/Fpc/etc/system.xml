@@ -83,6 +83,50 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </customer_groups>
+                        <vary_currency translate="label comment">
+                            <label>Vary by Currency</label>
+                            <comment>Separate cache per currency. Enable if your store supports multiple currencies.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/vary_currency</config_path>
+                            <sort_order>40</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </vary_currency>
+                        <vary_tax translate="label comment">
+                            <label>Vary by Tax Zone</label>
+                            <comment>Separate cache per tax destination country. Uses customer shipping address or CF-IPCountry header. Enable if prices include tax and vary by region.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/vary_tax</config_path>
+                            <sort_order>45</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </vary_tax>
+                        <vary_geo translate="label comment">
+                            <label>Vary by GeoIP Country</label>
+                            <comment>Separate cache per visitor country. Reads CF-IPCountry or X-Country-Code header. Enable for geo-targeted content.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/vary_geo</config_path>
+                            <sort_order>50</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </vary_geo>
+                        <gzip_only translate="label comment">
+                            <label>Gzip Only (Save Disk Space)</label>
+                            <comment>Only store .gz files, not plain .html. Saves ~80% disk space. Web server must support gzip_static (nginx) or mod_deflate (Apache). PHP fallback will decompress on the fly.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/gzip_only</config_path>
+                            <sort_order>55</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </gzip_only>
                         <flush_button translate="label">
                             <label>Flush Full Page Cache</label>
                             <frontend_type>button</frontend_type>
