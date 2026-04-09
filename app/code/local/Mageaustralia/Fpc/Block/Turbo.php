@@ -170,6 +170,25 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
     if (typeof Turbo !== 'undefined') {
         Turbo.config.drive.progressBarDelay = 150;
     }
+
+    // ── Sync CSS: copy missing stylesheets from incoming page head ──
+    // Turbo swaps <body> but keeps <head>. If the new page has different
+    // CSS (different layout handle), those stylesheets never load.
+    // This copies any missing <link rel="stylesheet"> into <head> before render.
+    document.addEventListener('turbo:before-render', function(e) {
+        var newHead = e.detail.newBody.ownerDocument.head;
+        if (!newHead) return;
+        var currentLinks = {};
+        document.head.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {
+            currentLinks[link.getAttribute('href')] = true;
+        });
+        newHead.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {
+            var href = link.getAttribute('href');
+            if (href && !currentLinks[href]) {
+                document.head.appendChild(link.cloneNode(true));
+            }
+        });
+    });
 })();
 </script>
 HTML;
