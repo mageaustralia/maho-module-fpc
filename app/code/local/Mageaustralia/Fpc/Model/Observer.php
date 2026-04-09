@@ -203,6 +203,11 @@ class Mageaustralia_Fpc_Model_Observer
             return;
         }
 
+        if (!$this->getHelper()->shouldFlushOnProductSave()) {
+            $this->queueAsyncFlush('products', (int) $product->getId());
+            return;
+        }
+
         $urls = $this->getHelper()->getProductUrls($product);
         $this->getCache()->purgeByPaths($urls);
     }
@@ -309,6 +314,11 @@ class Mageaustralia_Fpc_Model_Observer
 
         // Only purge if stock status actually changed
         if (!$stockItem->getStockStatusChangedAuto() && !$stockItem->dataHasChangedFor('is_in_stock')) {
+            return;
+        }
+
+        if (!$this->getHelper()->shouldFlushOnStockChange()) {
+            $this->queueAsyncFlush('products', (int) $stockItem->getProductId());
             return;
         }
 

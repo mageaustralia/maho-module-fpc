@@ -55,6 +55,28 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return Mage::getStoreConfigFlag('system/fpc/customer_groups');
     }
 
+    // ── Product/Stock Flush Toggles ────────────────────────────────
+
+    public function shouldFlushOnProductSave(): bool
+    {
+        return Mage::getStoreConfigFlag('system/fpc/flush_on_product_save');
+    }
+
+    public function shouldFlushOnStockChange(): bool
+    {
+        return Mage::getStoreConfigFlag('system/fpc/flush_on_stock_change');
+    }
+
+    // ── Refresh Actions ─────────────────────────────────────────────
+
+    /**
+     * @return string[]
+     */
+    public function getRefreshActions(): array
+    {
+        return $this->parseLines((string) Mage::getStoreConfig('system/fpc/refresh_actions'));
+    }
+
     // ── Turbo Drive ────────────────────────────────────────────────
 
     public function isTurboEnabled(): bool
