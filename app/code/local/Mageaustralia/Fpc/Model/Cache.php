@@ -34,13 +34,16 @@ class Mageaustralia_Fpc_Model_Cache
     public function exists(string $cacheKey): bool
     {
         $file = $this->helper->getCacheFilePath($cacheKey);
+        $fileGz = $this->helper->getCacheFilePathGz($cacheKey);
 
-        if (!is_file($file)) {
+        // Check plain or gzipped file
+        $checkFile = is_file($file) ? $file : (is_file($fileGz) ? $fileGz : null);
+        if ($checkFile === null) {
             return false;
         }
 
         // Check expiry
-        $mtime = filemtime($file);
+        $mtime = filemtime($checkFile);
         $lifetime = $this->helper->getCacheLifetime();
 
         if ($mtime !== false && (time() - $mtime) > $lifetime) {
@@ -58,12 +61,23 @@ class Mageaustralia_Fpc_Model_Cache
     {
         $file = $this->helper->getCacheFilePath($cacheKey);
 
-        if (!is_file($file)) {
-            return null;
+        // Try plain HTML first
+        if (is_file($file)) {
+            $content = file_get_contents($file);
+            return $content !== false ? $content : null;
         }
 
-        $content = file_get_contents($file);
-        return $content !== false ? $content : null;
+        // Gzip-only mode: decompress .gz file
+        $fileGz = $this->helper->getCacheFilePathGz($cacheKey);
+        if (is_file($fileGz)) {
+            $gz = file_get_contents($fileGz);
+            if ($gz !== false) {
+                $content = gzdecode($gz);
+                return $content !== false ? $content : null;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -99,17 +113,21 @@ class Mageaustralia_Fpc_Model_Cache
             }
         }
 
-        // Write plain HTML
-        $written = file_put_contents($file, $html, LOCK_EX);
-        if ($written === false) {
-            Mage::log("FPC: failed to write {$file}", 3);
-            return false;
-        }
+        $gzipOnly = $this->helper->gzipOnly();
 
-        // Write gzipped version for nginx gzip_static
+        // Write gzipped version (always — used by nginx gzip_static and as primary in gzip-only mode)
         $gz = gzencode($html, 6);
         if ($gz !== false) {
             file_put_contents($fileGz, $gz, LOCK_EX);
+        }
+
+        // Write plain HTML (skip if gzip-only mode — saves ~80% disk space)
+        if (!$gzipOnly) {
+            $written = file_put_contents($file, $html, LOCK_EX);
+            if ($written === false) {
+                Mage::log("FPC: failed to write {$file}", 3);
+                return false;
+            }
         }
 
         return true;

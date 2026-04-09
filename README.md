@@ -13,15 +13,17 @@ High-performance full page cache module for [Maho](https://mahocommerce.com) (PH
 > Tested on a dedicated staging server (dedicated CPU, nginx + PHP-FPM 8.4).
 > 5,000 requests, 200 concurrent users, zero failures.
 
-### FrankenPHP / Fly.io
+### FrankenPHP / Fly.io (PHP cache hit — no web server bypass)
 
-| Page | Without FPC | With FPC | Speedup |
-|------|-------------|----------|---------|
+| Page | Without FPC | With FPC (PHP) | Speedup |
+|------|-------------|----------------|---------|
 | Homepage | 110ms | 75ms | 1.5x |
 | Category + Products | 303ms | 79ms | **3.8x** |
 | Product Page | 300ms | 78ms | **3.8x** |
 
-> Tested on Fly.io shared-cpu-1x (512MB) with Neon Postgres, Sydney region.
+> Fly.io shared-cpu-1x (512MB), Neon Postgres, Sydney region.
+> TTFB includes ~70ms network latency (test from Singapore). Actual PHP FPC hit: ~5–10ms.
+> FrankenPHP serves via PHP fallback (no static file bypass). With Caddy `try_files` or a CDN in front, these would drop to ~1ms + network latency.
 
 ## Features
 

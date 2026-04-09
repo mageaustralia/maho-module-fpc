@@ -199,6 +199,10 @@ utm_term
 gclid
 fbclid</miss_uri_params>
                 <customer_groups>0</customer_groups>
+                <vary_currency>0</vary_currency>
+                <vary_tax>0</vary_tax>
+                <vary_geo>0</vary_geo>
+                <gzip_only>0</gzip_only>
                 <turbo_enabled>1</turbo_enabled>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
