@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<config>
+    <modules>
+        <Mageaustralia_Fpc>
+            <version>1.0.0</version>
+        </Mageaustralia_Fpc>
+    </modules>
+    <global>
+        <cache>
+            <types>
+                <fpc translate="label,description" module="mageaustralia_fpc">
+                    <label>Full Page Cache</label>
+                    <description>Cached static HTML pages (category, product, CMS). Flush after template or layout changes.</description>
+                    <tags>FPC</tags>
+                </fpc>
+            </types>
+        </cache>
+        <models>
+            <mageaustralia_fpc>
+                <class>Mageaustralia_Fpc_Model</class>
+            </mageaustralia_fpc>
+        </models>
+        <blocks>
+            <mageaustralia_fpc>
+                <class>Mageaustralia_Fpc_Block</class>
+            </mageaustralia_fpc>
+        </blocks>
+        <helpers>
+            <mageaustralia_fpc>
+                <class>Mageaustralia_Fpc_Helper</class>
+            </mageaustralia_fpc>
+        </helpers>
+        <events>
+            <!-- Cache write: capture response and write static HTML -->
+            <controller_front_send_response_before>
+                <observers>
+                    <mageaustralia_fpc_save>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>saveCache</method>
+                    </mageaustralia_fpc_save>
+                </observers>
+            </controller_front_send_response_before>
+
+            <!-- Cache read: check for cached response before routing -->
+            <controller_action_predispatch>
+                <observers>
+                    <mageaustralia_fpc_hit>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>checkCache</method>
+                    </mageaustralia_fpc_hit>
+                </observers>
+            </controller_action_predispatch>
+
+            <!-- Invalidation: product save -->
+            <catalog_product_save_after>
+                <observers>
+                    <mageaustralia_fpc_product>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onProductSave</method>
+                    </mageaustralia_fpc_product>
+                </observers>
+            </catalog_product_save_after>
+
+            <!-- Invalidation: category save -->
+            <catalog_category_save_after>
+                <observers>
+                    <mageaustralia_fpc_category>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onCategorySave</method>
+                    </mageaustralia_fpc_category>
+                </observers>
+            </catalog_category_save_after>
+
+            <!-- Invalidation: CMS page save -->
+            <cms_page_save_after>
+                <observers>
+                    <mageaustralia_fpc_cms_page>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onCmsPageSave</method>
+                    </mageaustralia_fpc_cms_page>
+                </observers>
+            </cms_page_save_after>
+
+            <!-- Invalidation: CMS block save -->
+            <cms_block_save_after>
+                <observers>
+                    <mageaustralia_fpc_cms_block>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onCmsBlockSave</method>
+                    </mageaustralia_fpc_cms_block>
+                </observers>
+            </cms_block_save_after>
+
+            <!-- Invalidation: stock change -->
+            <cataloginventory_stock_item_save_after>
+                <observers>
+                    <mageaustralia_fpc_stock>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onStockSave</method>
+                    </mageaustralia_fpc_stock>
+                </observers>
+            </cataloginventory_stock_item_save_after>
+
+            <!-- Invalidation: cache tag flush -->
+            <application_clean_cache>
+                <observers>
+                    <mageaustralia_fpc_clean>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onCleanCache</method>
+                    </mageaustralia_fpc_clean>
+                </observers>
+            </application_clean_cache>
+
+            <!-- AJAX framework: intercept responses when isEasyAjax is present -->
+            <controller_action_postdispatch>
+                <observers>
+                    <mageaustralia_fpc_ajax>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Ajax_Observer</class>
+                        <method>onPostdispatch</method>
+                    </mageaustralia_fpc_ajax>
+                </observers>
+            </controller_action_postdispatch>
+        </events>
+    </global>
+    <admin>
+        <routers>
+            <adminhtml>
+                <args>
+                    <modules>
+                        <mageaustralia_fpc before="Mage_Adminhtml">
+                            Mageaustralia_Fpc_Adminhtml
+                        </mageaustralia_fpc>
+                    </modules>
+                </args>
+            </adminhtml>
+        </routers>
+    </admin>
+    <frontend>
+        <routers>
+            <fpc>
+                <use>standard</use>
+                <args>
+                    <module>Mageaustralia_Fpc</module>
+                    <frontName>fpc</frontName>
+                </args>
+            </fpc>
+        </routers>
+        <layout>
+            <updates>
+                <mageaustralia_fpc>
+                    <file>mageaustralia_fpc.xml</file>
+                </mageaustralia_fpc>
+            </updates>
+        </layout>
+    </frontend>
+    <default>
+        <system>
+            <fpc>
+                <enabled>0</enabled>
+                <lifetime>86400</lifetime>
+                <show_age>0</show_age>
+                <cdn_max_age>60</cdn_max_age>
+                <cache_actions>cms_index_index
+cms_page_view
+catalog_product_view
+catalog_category_view</cache_actions>
+                <dynamic_blocks>cart_count:[data-cart-count]:text
+compare_count:[data-compare-count]:text
+wishlist_count:[data-wishlist-count]:text
+account_links:[data-fpc-block="account_links"]:html
+messages:[data-fpc-block="messages"]:html</dynamic_blocks>
+                <lazy_blocks></lazy_blocks>
+                <bypass_handles>checkout_cart_index
+checkout_onepage_index
+customer_account_login
+customer_account_create</bypass_handles>
+                <uri_params>p
+dir
+order
+limit
+mode
+cat
+price
+q</uri_params>
+                <miss_uri_params>utm_campaign
+utm_medium
+utm_source
+utm_content
+utm_term
+gclid
+fbclid</miss_uri_params>
+                <customer_groups>0</customer_groups>
+                <turbo_enabled>1</turbo_enabled>
+                <turbo_category>1</turbo_category>
+                <turbo_product>0</turbo_product>
+                <turbo_cms>1</turbo_cms>
+                <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/</turbo_excluded_paths>
+            </fpc>
+        </system>
+    </default>
+</config>
