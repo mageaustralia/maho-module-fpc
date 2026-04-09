@@ -1,0 +1,32 @@
+{
+    "name": "mageaustralia/maho-module-fpc",
+    "description": "Full Page Cache + Turbo Drive for Maho — static HTML serving, AJAX hole-punching, instant navigation",
+    "type": "maho-module",
+    "license": "OSL-3.0",
+    "homepage": "https://github.com/mageaustralia/maho-module-fpc",
+    "authors": [
+        {
+            "name": "Mage Australia",
+            "email": "dev@mageaustralia.com.au",
+            "homepage": "https://mageaustralia.com.au"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "mahocommerce/maho": ">=26.3"
+    },
+    "autoload": {
+        "psr-0": {
+            "Mageaustralia_Fpc_": "app/code/local/"
+        }
+    },
+    "extra": {
+        "map": [
+            ["app/code/local/Mageaustralia/Fpc", "app/code/local/Mageaustralia/Fpc"],
+            ["app/design/frontend/base/default/layout/mageaustralia_fpc.xml", "app/design/frontend/base/default/layout/mageaustralia_fpc.xml"],
+            ["app/etc/modules/Mageaustralia_Fpc.xml", "app/etc/modules/Mageaustralia_Fpc.xml"],
+            ["app/locale/en_US/Mageaustralia_Fpc.csv", "app/locale/en_US/Mageaustralia_Fpc.csv"],
+            ["js/mageaustralia/fpc", "public/js/mageaustralia/fpc"]
+        ]
+    }
+}
