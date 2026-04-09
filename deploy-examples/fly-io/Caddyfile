@@ -1,0 +1,66 @@
+{
+	skip_install_trust
+
+	{$CADDY_GLOBAL_OPTIONS}
+
+	frankenphp {
+		{$FRANKENPHP_CONFIG}
+	}
+}
+
+{$SERVER_NAME:localhost} {
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+	root {$SERVER_ROOT:public/}
+	encode zstd br gzip
+
+	# Block bots on demo site
+	respond /robots.txt 200 {
+		body "User-agent: *
+Disallow: /
+"
+		close
+	}
+
+	# Block aggressive crawlers immediately (don't waste PHP cycles)
+	@badbot header_regexp User-Agent (?i)(GPTBot|CCBot|ChatGPT-User|Google-Extended|anthropic-ai|ClaudeBot|Bytespider|PetalBot)
+	respond @badbot 403
+
+	# API Platform routing — /api/* → rest.php
+	@apiRoute {
+		path /api/*
+		not file
+	}
+	rewrite @apiRoute /rest.php
+
+	# CORS preflight
+	@preflight {
+		method OPTIONS
+		path /api/*
+	}
+	respond @preflight 204
+
+	header /api/* Access-Control-Allow-Origin "*"
+	header /api/* Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+	header /api/* Access-Control-Allow-Headers "Content-Type, Authorization, Accept, X-Store-Code, X-Idempotency-Key, If-None-Match"
+	header /api/* Access-Control-Expose-Headers "ETag, X-Idempotency-Replayed, Link"
+
+	# Static files (exclude PHP — those must be executed, not served raw)
+	@static {
+		file
+		not path *.php
+	}
+	handle @static {
+		file_server
+	}
+
+	{$CADDY_SERVER_EXTRA_DIRECTIVES}
+
+	# Everything else → index.php (Maho front controller)
+	php_server {
+		index index.php
+	}
+}

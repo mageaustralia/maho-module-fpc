@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<config>
+    <modules>
+        <Mageaustralia_Fpc>
+            <active>true</active>
+            <codePool>local</codePool>
+            <depends>
+                <Mage_Core />
+                <Mage_Catalog />
+                <Mage_Cms />
+                <Mage_Checkout />
+                <Mage_CatalogInventory />
+                <Mage_Customer />
+            </depends>
+        </Mageaustralia_Fpc>
+    </modules>
+</config>

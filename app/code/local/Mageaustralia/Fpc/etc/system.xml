@@ -1,0 +1,249 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Mage Australia (https://mageaustralia.com.au)
+ *
+ * @license https://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
+ */
+-->
+<config>
+    <tabs>
+        <mageaustralia translate="label">
+            <label>Mage Australia</label>
+            <sort_order>300</sort_order>
+        </mageaustralia>
+    </tabs>
+    <sections>
+        <mageaustralia_fpc translate="label">
+            <label>Full Page Cache</label>
+            <tab>mageaustralia</tab>
+            <sort_order>20</sort_order>
+            <show_in_default>1</show_in_default>
+            <show_in_website>1</show_in_website>
+            <show_in_store>1</show_in_store>
+            <groups>
+                <general translate="label" module="mageaustralia_fpc">
+                    <label>General Settings</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>10</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>1</show_in_website>
+                    <show_in_store>1</show_in_store>
+                    <fields>
+                        <enabled translate="label comment">
+                            <label>Enable FPC</label>
+                            <comment>When enabled, cacheable pages are saved as static HTML and served without PHP.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/enabled</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </enabled>
+                        <lifetime translate="label comment">
+                            <label>Cache Lifetime</label>
+                            <comment>Seconds before cached pages expire. Default: 86400 (24 hours).</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/lifetime</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </lifetime>
+                        <cdn_max_age translate="label comment">
+                            <label>CDN Max-Age</label>
+                            <comment>Cache-Control max-age in seconds for CDN layer. Default: 60.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/cdn_max_age</config_path>
+                            <sort_order>25</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </cdn_max_age>
+                        <show_age translate="label comment">
+                            <label>Show Cache Age Header</label>
+                            <comment>Add X-FPC-Age response header showing cache entry age in seconds.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/show_age</config_path>
+                            <sort_order>30</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </show_age>
+                        <customer_groups translate="label comment">
+                            <label>Vary by Customer Group</label>
+                            <comment>Include customer group in cache key. Different cached versions per group.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/customer_groups</config_path>
+                            <sort_order>35</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </customer_groups>
+                        <flush_button translate="label">
+                            <label>Flush Full Page Cache</label>
+                            <frontend_type>button</frontend_type>
+                            <frontend_model>mageaustralia_fpc/adminhtml_system_config_flushButton</frontend_model>
+                            <sort_order>90</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </flush_button>
+                    </fields>
+                </general>
+                <pages translate="label" module="mageaustralia_fpc">
+                    <label>Page Caching Rules</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>20</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>0</show_in_website>
+                    <show_in_store>0</show_in_store>
+                    <fields>
+                        <cache_actions translate="label comment">
+                            <label>Cacheable Actions</label>
+                            <comment>One full action name per line (e.g. catalog_product_view). Only these actions will be cached.</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/cache_actions</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </cache_actions>
+                        <bypass_handles translate="label comment">
+                            <label>Bypass Layout Handles</label>
+                            <comment>One handle per line. Pages with these handles will never be cached.</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/bypass_handles</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </bypass_handles>
+                        <uri_params translate="label comment">
+                            <label>URI Parameters</label>
+                            <comment>Query parameters included in cache key (one per line). All others are stripped.</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/uri_params</config_path>
+                            <sort_order>30</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </uri_params>
+                        <miss_uri_params translate="label comment">
+                            <label>Strip Parameters</label>
+                            <comment>Query parameters always stripped before cache key (one per line). UTM, gclid, etc.</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/miss_uri_params</config_path>
+                            <sort_order>40</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </miss_uri_params>
+                    </fields>
+                </pages>
+                <blocks translate="label" module="mageaustralia_fpc">
+                    <label>Dynamic Blocks (AJAX Hole-Punching)</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>30</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>0</show_in_website>
+                    <show_in_store>0</show_in_store>
+                    <fields>
+                        <dynamic_blocks translate="label comment">
+                            <label>Dynamic Blocks</label>
+                            <comment><![CDATA[Configure blocks that are replaced with placeholders in cached HTML and loaded via AJAX.<br/>
+                            <b>Block Type:</b> Maho block alias (e.g. <code>checkout/cart_sidebar</code>) or helper call (<code>helper:checkout/cart:getSummaryCount</code>)<br/>
+                            <b>Template:</b> Optional phtml override (e.g. <code>checkout/cart/minicart.phtml</code>)<br/>
+                            <b>Selector:</b> CSS selector to find in HTML (<code>#id</code>, <code>.class</code>, <code>[data-attr]</code>)]]></comment>
+                            <frontend_type>text</frontend_type>
+                            <frontend_model>mageaustralia_fpc/adminhtml_system_config_dynamicBlocks</frontend_model>
+                            <backend_model>adminhtml/system_config_backend_serialized_array</backend_model>
+                            <config_path>system/fpc/dynamic_blocks</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </dynamic_blocks>
+                        <lazy_blocks translate="label comment">
+                            <label>Lazy Blocks</label>
+                            <comment>Block names to load lazily via AJAX (one per line).</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/lazy_blocks</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </lazy_blocks>
+                    </fields>
+                </blocks>
+                <turbo translate="label" module="mageaustralia_fpc">
+                    <label>Turbo Drive (Instant Navigation)</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>40</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>1</show_in_website>
+                    <show_in_store>1</show_in_store>
+                    <fields>
+                        <turbo_enabled translate="label comment">
+                            <label>Enable Turbo Drive</label>
+                            <comment>Intercepts link clicks and replaces full page loads with fast AJAX navigation. Pages swap instantly without re-downloading CSS/JS.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/turbo_enabled</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </turbo_enabled>
+                        <turbo_category translate="label comment">
+                            <label>Category Pages</label>
+                            <comment>Use Turbo for category browsing (recommended — biggest benefit).</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/turbo_category</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </turbo_category>
+                        <turbo_product translate="label comment">
+                            <label>Product Pages</label>
+                            <comment>Use Turbo for product pages. Disable if swatches or configurable options break.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/turbo_product</config_path>
+                            <sort_order>30</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </turbo_product>
+                        <turbo_cms translate="label comment">
+                            <label>CMS Pages</label>
+                            <comment>Use Turbo for CMS/static pages (homepage, about, etc.).</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/turbo_cms</config_path>
+                            <sort_order>40</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </turbo_cms>
+                        <turbo_excluded_paths translate="label comment">
+                            <label>Additional Excluded URL Paths</label>
+                            <comment>Comma-separated URL path prefixes that always bypass Turbo. E.g. /checkout/,/customer/</comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/turbo_excluded_paths</config_path>
+                            <sort_order>50</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </turbo_excluded_paths>
+                    </fields>
+                </turbo>
+            </groups>
+        </mageaustralia_fpc>
+    </sections>
+</config>

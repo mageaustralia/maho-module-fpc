@@ -1,0 +1,33 @@
+app = 'maho-demo'
+primary_region = 'syd'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  SERVER_NAME = ':80'
+  PG_HOST = 'ep-misty-forest-a7srl64d.ap-southeast-2.aws.neon.tech'
+  PG_USER = 'neondb_owner'
+  PG_DBNAME = 'neondb'
+  PG_SSLMODE = 'require'
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  concurrency_type = "connections"
+  soft_limit = 50
+  hard_limit = 100
+
+[checks]
+  [checks.health]
+    type = "tcp"
+    port = 80
+    interval = "30s"
+    timeout = "5s"
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'

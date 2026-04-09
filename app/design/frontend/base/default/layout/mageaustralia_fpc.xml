@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<!--
+  Mageaustralia_Fpc — Full Page Cache
+  Copyright (c) 2026 Mage Australia (https://mageaustralia.com.au)
+  Licensed under the Open Software License v3.0 (OSL-3.0)
+-->
+<layout version="0.1.0">
+    <default>
+        <reference name="head">
+            <!-- FPC scripts -->
+            <action method="addJs">
+                <script>mageaustralia/fpc/loader.js</script>
+            </action>
+            <action method="addJs">
+                <script>mageaustralia/fpc/ajax-cart.js</script>
+            </action>
+
+            <!-- Turbo Drive (outputs script tag only when enabled in config) -->
+            <block type="mageaustralia_fpc/turbo" name="fpc.turbo" after="-" />
+        </reference>
+    </default>
+
+    <!--
+        DynamicController layout — minimal: just load default blocks
+        so the controller can render cart_count, welcome, messages, etc.
+    -->
+    <fpc_dynamic_index>
+        <reference name="root">
+            <action method="setTemplate">
+                <template>page/empty.phtml</template>
+            </action>
+        </reference>
+    </fpc_dynamic_index>
+</layout>
