@@ -136,7 +136,10 @@
                         </cache_actions>
                         <refresh_actions translate="label comment">
                             <label>Refresh Actions</label>
-                            <comment>One action per line. FPC is flushed after these actions complete (e.g. checkout_cart_add).</comment>
+                            <comment><![CDATA[One full action name per line. The <b>entire</b> FPC is flushed after these actions complete.<br/>
+                            Usually not needed — cart/wishlist/compare changes are handled by Dynamic Blocks (AJAX),
+                            and product/stock changes are handled by targeted purge observers.<br/>
+                            Only use for custom actions that change rendered page content globally.]]></comment>
                             <frontend_type>textarea</frontend_type>
                             <config_path>system/fpc/refresh_actions</config_path>
                             <sort_order>15</sort_order>

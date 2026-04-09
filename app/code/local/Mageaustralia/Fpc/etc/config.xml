@@ -244,18 +244,7 @@ srsltid</miss_uri_params>
                 <gzip_only>0</gzip_only>
                 <flush_on_product_save>1</flush_on_product_save>
                 <flush_on_stock_change>1</flush_on_stock_change>
-                <refresh_actions>checkout_cart_add
-checkout_cart_delete
-checkout_cart_updatePost
-catalog_product_compare_add
-catalog_product_compare_clear
-catalog_product_compare_remove
-wishlist_index_add
-wishlist_index_remove
-wishlist_index_update
-wishlist_index_allcart
-checkout_onepage_success
-newsletter_subscriber_new</refresh_actions>
+                <refresh_actions></refresh_actions>
                 <turbo_enabled>1</turbo_enabled>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
