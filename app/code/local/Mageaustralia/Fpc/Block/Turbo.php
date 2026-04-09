@@ -59,6 +59,34 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
         }
     });
 
+    // ── Disable Turbo for form submissions to excluded paths ──
+    // Turbo intercepts form POSTs by default, breaking login/checkout/etc.
+    document.addEventListener('turbo:before-fetch-request', function(e) {
+        var url = e.detail.url.href || e.detail.url.toString();
+        for (var i = 0; i < excludedPaths.length; i++) {
+            if (url.indexOf(excludedPaths[i]) !== -1) {
+                e.preventDefault();
+                return;
+            }
+        }
+    });
+
+    // Also mark forms with excluded actions as data-turbo="false" on page load
+    function disableTurboOnExcludedForms() {
+        document.querySelectorAll('form[action]').forEach(function(form) {
+            var action = form.action || '';
+            for (var i = 0; i < excludedPaths.length; i++) {
+                if (action.indexOf(excludedPaths[i]) !== -1) {
+                    form.setAttribute('data-turbo', 'false');
+                    break;
+                }
+            }
+        });
+    }
+    document.addEventListener('turbo:load', disableTurboOnExcludedForms);
+    if (document.readyState !== 'loading') disableTurboOnExcludedForms();
+    else document.addEventListener('DOMContentLoaded', disableTurboOnExcludedForms);
+
     // ── Generic re-init: re-dispatch lifecycle events after Turbo body swap ──
     // This re-triggers ALL existing DOMContentLoaded and window.load handlers
     // from app.js, minicart.js, swatches, etc. — fully theme-agnostic.
