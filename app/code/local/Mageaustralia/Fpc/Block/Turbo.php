@@ -57,6 +57,18 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
                 return;
             }
         }
+
+        // Close megamenu dropdowns immediately on navigation
+        document.querySelectorAll('#nav .menu-columns.active').forEach(function(cols) {
+            cols.style.display = 'none';
+            cols.style.maxHeight = '';
+            cols.style.overflow = '';
+            cols.style.transition = '';
+            cols.classList.remove('active');
+        });
+        document.querySelectorAll('#nav li.level0.open').forEach(function(li) {
+            li.classList.remove('open');
+        });
     });
 
     // ── Disable Turbo for form submissions to excluded paths ──
@@ -171,24 +183,10 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
         Turbo.config.drive.progressBarDelay = 150;
     }
 
-    // ── Sync CSS: copy missing stylesheets from incoming page head ──
-    // Turbo swaps <body> but keeps <head>. If the new page has different
-    // CSS (different layout handle), those stylesheets never load.
-    // This copies any missing <link rel="stylesheet"> into <head> before render.
-    document.addEventListener('turbo:before-render', function(e) {
-        var newHead = e.detail.newBody.ownerDocument.head;
-        if (!newHead) return;
-        var currentLinks = {};
-        document.head.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {
-            currentLinks[link.getAttribute('href')] = true;
-        });
-        newHead.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {
-            var href = link.getAttribute('href');
-            if (href && !currentLinks[href]) {
-                document.head.appendChild(link.cloneNode(true));
-            }
-        });
-    });
+    // ── CSS Protection ──
+    // Root cause of CSS loss was document.write() in Meilisearch template (now fixed).
+    // No special CSS handling needed — Turbo's default head merge works fine
+    // when all pages serve the same CSS set.
 })();
 </script>
 HTML;

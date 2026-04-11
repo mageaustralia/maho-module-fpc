@@ -1,5 +1,16 @@
 <?xml version="1.0"?>
 <config>
+    <menu>
+        <thirdparty>
+            <children>
+                <fpc_stats translate="title" module="mageaustralia_fpc">
+                    <title>FPC Statistics</title>
+                    <action>adminhtml/fpcStats/index</action>
+                    <sort_order>50</sort_order>
+                </fpc_stats>
+            </children>
+        </thirdparty>
+    </menu>
     <acl>
         <resources>
             <admin>
@@ -15,6 +26,13 @@
                             </config>
                         </children>
                     </system>
+                    <mageaustralia>
+                        <children>
+                            <fpc_stats translate="title">
+                                <title>FPC Statistics</title>
+                            </fpc_stats>
+                        </children>
+                    </mageaustralia>
                 </children>
             </admin>
         </resources>

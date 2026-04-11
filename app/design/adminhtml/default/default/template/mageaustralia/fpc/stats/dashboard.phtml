@@ -1,0 +1,305 @@
+<?php
+/**
+ * Mageaustralia_Fpc — FPC Statistics Dashboard
+ *
+ * @var Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard $this
+ */
+
+$hitRate      = $this->getHitRate();
+$flushCount   = $this->getFlushCount();
+$avgTtfb      = $this->getAverageTtfb();
+$topMissed    = $this->getTopMissedUrls();
+$recentFlush  = $this->getRecentFlushes();
+$hourlyStats  = $this->getHourlyStats();
+$periodHours  = $this->getPeriodHours();
+$periodLabel  = $this->getPeriodLabel();
+$periodOpts   = $this->getPeriodOptions();
+$statsEnabled = $this->isStatsEnabled();
+$fpcEnabled   = $this->isFpcEnabled();
+
+// Chart dimensions
+$chartW      = 800;
+$chartH      = 200;
+$chartPadL   = 50;
+$chartPadR   = 20;
+$chartPadT   = 20;
+$chartPadB   = 40;
+$plotW       = $chartW - $chartPadL - $chartPadR;
+$plotH       = $chartH - $chartPadT - $chartPadB;
+$barCount    = count($hourlyStats);
+$maxVal      = 1;
+foreach ($hourlyStats as $h) {
+    $total = $h['hits'] + $h['misses'];
+    if ($total > $maxVal) {
+        $maxVal = $total;
+    }
+}
+// Round max up to a nice number
+$niceMax = (int) (ceil($maxVal / max(1, pow(10, floor(log10(max(1, $maxVal))) - 1))) * max(1, pow(10, floor(log10(max(1, $maxVal))) - 1)));
+if ($niceMax < 1) {
+    $niceMax = 1;
+}
+?>
+
+<style>
+    .fpc-dash { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .fpc-dash h2 { font-size: 20px; font-weight: 600; color: #1a1a2e; margin: 0 0 4px 0; }
+    .fpc-dash .fpc-subtitle { font-size: 13px; color: #6b7280; margin: 0 0 20px 0; }
+    .fpc-dash .fpc-period-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 24px; padding: 0;
+    }
+    .fpc-dash .fpc-period-btns { display: flex; gap: 0; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
+    .fpc-dash .fpc-period-btn {
+        padding: 6px 16px; font-size: 13px; font-weight: 500;
+        text-decoration: none; color: #374151; background: #fff;
+        border-right: 1px solid #d1d5db; transition: background 0.15s;
+    }
+    .fpc-dash .fpc-period-btn:last-child { border-right: none; }
+    .fpc-dash .fpc-period-btn:hover { background: #f3f4f6; }
+    .fpc-dash .fpc-period-btn.active { background: #1a1a2e; color: #fff; }
+
+    .fpc-dash .fpc-alert {
+        padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 20px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .fpc-dash .fpc-alert-warn { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; }
+    .fpc-dash .fpc-alert-info { background: #eff6ff; border: 1px solid #3b82f6; color: #1e40af; }
+    .fpc-dash .fpc-alert a { color: inherit; font-weight: 600; }
+
+    .fpc-dash .fpc-cards {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px;
+    }
+    .fpc-dash .fpc-card {
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+        padding: 20px 24px; position: relative; overflow: hidden;
+    }
+    .fpc-dash .fpc-card-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 8px; }
+    .fpc-dash .fpc-card-value { font-size: 32px; font-weight: 700; color: #1a1a2e; line-height: 1; }
+    .fpc-dash .fpc-card-sub { font-size: 12px; color: #9ca3af; margin-top: 6px; }
+    .fpc-dash .fpc-card-accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+    .fpc-card-accent-green { background: #10b981; }
+    .fpc-card-accent-blue  { background: #3b82f6; }
+    .fpc-card-accent-amber { background: #f59e0b; }
+    .fpc-card-accent-red   { background: #ef4444; }
+
+    .fpc-dash .fpc-section {
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+        padding: 24px; margin-bottom: 24px;
+    }
+    .fpc-dash .fpc-section-title { font-size: 15px; font-weight: 600; color: #1a1a2e; margin: 0 0 16px 0; }
+
+    .fpc-dash .fpc-chart-legend { display: flex; gap: 20px; margin-bottom: 12px; }
+    .fpc-dash .fpc-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; }
+    .fpc-dash .fpc-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    .fpc-dash table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .fpc-dash th {
+        text-align: left; padding: 10px 12px; font-weight: 600; font-size: 11px;
+        text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280;
+        border-bottom: 2px solid #e5e7eb; background: #f9fafb;
+    }
+    .fpc-dash td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    .fpc-dash tr:last-child td { border-bottom: none; }
+    .fpc-dash tr:hover td { background: #f9fafb; }
+    .fpc-dash .fpc-url { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; color: #4f46e5; word-break: break-all; }
+    .fpc-dash .fpc-count { font-weight: 600; text-align: right; }
+    .fpc-dash .fpc-reason { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+    .fpc-dash .fpc-time { color: #9ca3af; white-space: nowrap; }
+    .fpc-dash .fpc-store { font-size: 11px; color: #9ca3af; }
+
+    .fpc-dash .fpc-empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; }
+    .fpc-dash .fpc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+    @media (max-width: 1100px) {
+        .fpc-dash .fpc-cards { grid-template-columns: repeat(2, 1fr); }
+        .fpc-dash .fpc-grid-2 { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="fpc-dash">
+    <div class="fpc-period-bar">
+        <div>
+            <h2>FPC Statistics</h2>
+            <p class="fpc-subtitle"><?php echo $this->escapeHtml($periodLabel); ?></p>
+        </div>
+        <div class="fpc-period-btns">
+            <?php foreach ($periodOpts as $opt): ?>
+                <a href="<?php echo $this->getPeriodUrl($opt['hours']); ?>"
+                   class="fpc-period-btn <?php echo $opt['active'] ? 'active' : ''; ?>">
+                    <?php echo $this->escapeHtml($opt['label']); ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php if (!$fpcEnabled): ?>
+        <div class="fpc-alert fpc-alert-warn">
+            <strong>FPC is disabled.</strong>
+            No pages are being cached. <a href="<?php echo $this->getConfigUrl(); ?>">Enable it in configuration.</a>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!$statsEnabled): ?>
+        <div class="fpc-alert fpc-alert-info">
+            <strong>Statistics collection is disabled.</strong>
+            Data shown may be stale. <a href="<?php echo $this->getConfigUrl(); ?>">Enable statistics tracking.</a>
+        </div>
+    <?php endif; ?>
+
+    <!-- Stat Cards -->
+    <div class="fpc-cards">
+        <div class="fpc-card">
+            <div class="fpc-card-accent fpc-card-accent-green"></div>
+            <div class="fpc-card-label">Hit Rate</div>
+            <div class="fpc-card-value"><?php echo number_format($hitRate['rate'], 1); ?>%</div>
+            <div class="fpc-card-sub"><?php echo number_format($hitRate['hits']); ?> hits / <?php echo number_format($hitRate['total']); ?> total</div>
+        </div>
+        <div class="fpc-card">
+            <div class="fpc-card-accent fpc-card-accent-blue"></div>
+            <div class="fpc-card-label">Total Requests</div>
+            <div class="fpc-card-value"><?php echo number_format($hitRate['total']); ?></div>
+            <div class="fpc-card-sub"><?php echo number_format($hitRate['misses']); ?> misses</div>
+        </div>
+        <div class="fpc-card">
+            <div class="fpc-card-accent fpc-card-accent-amber"></div>
+            <div class="fpc-card-label">Avg TTFB</div>
+            <div class="fpc-card-value"><?php echo number_format($avgTtfb, 0); ?><span style="font-size:16px;font-weight:400;color:#9ca3af;">ms</span></div>
+            <div class="fpc-card-sub">Client-side TTFB (all pages)</div>
+        </div>
+        <div class="fpc-card">
+            <div class="fpc-card-accent fpc-card-accent-red"></div>
+            <div class="fpc-card-label">Cache Flushes</div>
+            <div class="fpc-card-value"><?php echo number_format($flushCount); ?></div>
+            <div class="fpc-card-sub">Full or partial flushes</div>
+        </div>
+    </div>
+
+    <!-- Chart: Hit/Miss Over Time -->
+    <div class="fpc-section">
+        <h3 class="fpc-section-title">Hits vs Misses Over Time</h3>
+        <div class="fpc-chart-legend">
+            <span class="fpc-legend-item"><span class="fpc-legend-dot" style="background:#10b981;"></span> Hits</span>
+            <span class="fpc-legend-item"><span class="fpc-legend-dot" style="background:#ef4444;"></span> Misses</span>
+        </div>
+        <?php if ($barCount > 0 && $maxVal > 0): ?>
+            <div style="overflow-x:auto;">
+                <svg width="<?php echo $chartW; ?>" height="<?php echo $chartH; ?>" viewBox="0 0 <?php echo $chartW; ?> <?php echo $chartH; ?>" style="display:block;max-width:100%;">
+                    <!-- Y-axis gridlines -->
+                    <?php for ($g = 0; $g <= 4; $g++): ?>
+                        <?php
+                        $yVal = ($niceMax / 4) * $g;
+                        $yPos = $chartPadT + $plotH - ($plotH * ($yVal / $niceMax));
+                        ?>
+                        <line x1="<?php echo $chartPadL; ?>" y1="<?php echo $yPos; ?>"
+                              x2="<?php echo $chartW - $chartPadR; ?>" y2="<?php echo $yPos; ?>"
+                              stroke="#e5e7eb" stroke-width="1" />
+                        <text x="<?php echo $chartPadL - 8; ?>" y="<?php echo $yPos + 4; ?>"
+                              text-anchor="end" font-size="11" fill="#9ca3af">
+                            <?php echo number_format($yVal, 0); ?>
+                        </text>
+                    <?php endfor; ?>
+
+                    <!-- Bars -->
+                    <?php
+                    $gap = 2;
+                    $barW = max(2, ($plotW / max(1, $barCount)) - $gap);
+                    $halfBar = $barW / 2;
+                    foreach ($hourlyStats as $i => $bucket):
+                        $x = $chartPadL + ($i * ($barW + $gap));
+                        $hitsH = ($bucket['hits'] / $niceMax) * $plotH;
+                        $missH = ($bucket['misses'] / $niceMax) * $plotH;
+                        $totalH = $hitsH + $missH;
+                        $barBase = $chartPadT + $plotH;
+                    ?>
+                        <!-- Miss bar (bottom) -->
+                        <?php if ($missH > 0): ?>
+                            <rect x="<?php echo $x; ?>" y="<?php echo $barBase - $missH; ?>"
+                                  width="<?php echo $barW; ?>" height="<?php echo $missH; ?>"
+                                  fill="#ef4444" rx="1">
+                                <title><?php echo $this->escapeHtml($bucket['hour']); ?> - Misses: <?php echo $bucket['misses']; ?></title>
+                            </rect>
+                        <?php endif; ?>
+                        <!-- Hit bar (stacked on top) -->
+                        <?php if ($hitsH > 0): ?>
+                            <rect x="<?php echo $x; ?>" y="<?php echo $barBase - $totalH; ?>"
+                                  width="<?php echo $barW; ?>" height="<?php echo $hitsH; ?>"
+                                  fill="#10b981" rx="1">
+                                <title><?php echo $this->escapeHtml($bucket['hour']); ?> - Hits: <?php echo $bucket['hits']; ?></title>
+                            </rect>
+                        <?php endif; ?>
+                        <!-- X-axis label (show every Nth) -->
+                        <?php
+                        $labelInterval = max(1, (int) floor($barCount / 8));
+                        if ($i % $labelInterval === 0):
+                            $label = substr($bucket['hour'], 11, 5); // HH:00
+                            if ($periodHours >= 168) {
+                                $label = substr($bucket['hour'], 5, 5); // MM-DD
+                            }
+                        ?>
+                            <text x="<?php echo $x + $halfBar; ?>" y="<?php echo $chartH - 8; ?>"
+                                  text-anchor="middle" font-size="10" fill="#9ca3af">
+                                <?php echo $this->escapeHtml($label); ?>
+                            </text>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                </svg>
+            </div>
+        <?php else: ?>
+            <div class="fpc-empty">No data available for this period.</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Tables: Top Missed URLs + Recent Flushes -->
+    <div class="fpc-grid-2">
+        <div class="fpc-section">
+            <h3 class="fpc-section-title">Top Missed URLs</h3>
+            <?php if (!empty($topMissed)): ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>URL Path</th>
+                            <th style="text-align:right;">Miss Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($topMissed as $row): ?>
+                            <tr>
+                                <td class="fpc-url">/<?php echo $this->escapeHtml($row['url_path']); ?></td>
+                                <td class="fpc-count"><?php echo number_format((int)$row['miss_count']); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="fpc-empty">No misses recorded.</div>
+            <?php endif; ?>
+        </div>
+
+        <div class="fpc-section">
+            <h3 class="fpc-section-title">Recent Flushes</h3>
+            <?php if (!empty($recentFlush)): ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Reason</th>
+                            <th>Store</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($recentFlush as $row): ?>
+                            <tr>
+                                <td class="fpc-time"><?php echo $this->escapeHtml($row['created_at']); ?></td>
+                                <td class="fpc-reason"><?php echo $this->escapeHtml($row['flush_reason'] ?? '-'); ?></td>
+                                <td class="fpc-store"><?php echo $this->escapeHtml($row['store_code'] ?? '-'); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="fpc-empty">No flushes recorded.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>

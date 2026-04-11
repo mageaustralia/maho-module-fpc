@@ -69,12 +69,35 @@
             return false;
         }
 
+        // Ensure we have a fresh form_key (FPC cached pages have stale keys)
+        if (!window._fpcFormKeyReady) {
+            // Dynamic loader hasn't finished — fetch form_key synchronously-ish
+            var fkReq = new XMLHttpRequest();
+            fkReq.open('GET', '/fpc/dynamic/', false); // synchronous
+            try {
+                fkReq.send();
+                if (fkReq.status === 200) {
+                    var fkData = JSON.parse(fkReq.responseText);
+                    if (fkData.form_key) {
+                        var fkInputs = document.querySelectorAll('input[name="form_key"]');
+                        for (var fi = 0; fi < fkInputs.length; fi++) fkInputs[fi].value = fkData.form_key;
+                        window._fpcFormKeyReady = true;
+                    }
+                }
+            } catch(e) {}
+        }
+
         // Append isAjax param
         if (url.indexOf('isAjax') === -1) {
             url += (url.indexOf('?') === -1 ? '?' : '&') + 'isAjax=true';
         }
 
         var formData = new FormData(form);
+
+        // Add EasyAjax params for server-side block rendering
+        formData.append("easy_ajax", "1");
+        formData.append("action_content[0]", "cart_toggle_sidebar");
+        formData.append("action_content[1]", "cart_toggle");
 
         // Disable submit button to prevent double-clicks
         var submitBtn = form.querySelector('button[type="submit"], .btn-cart');
@@ -121,7 +144,9 @@
             }
 
             // Update cart count
-            if (typeof data.cart_qty !== 'undefined') {
+            if (typeof data.qty !== "undefined") {
+                updateCartCount(data.qty);
+            } else if (typeof data.cart_qty !== "undefined") {
                 updateCartCount(data.cart_qty);
             }
 
@@ -134,12 +159,31 @@
                     var msgText = colonIdx > -1 ? msg.substring(colonIdx + 1) : msg;
                     showToast(msgText, msgType);
                 }
+            } else if (data.message) {
+                showToast(data.message);
+            } else if (data.message) {
+                showToast(data.message);
             } else if (data.success) {
                 showToast('Item added to cart');
             }
 
-            // Update mini-cart sidebar if present
-            if (data.content) {
+            // Update blocks from EasyAjax response
+            if (data.action_content_data) {
+                if (data.action_content_data.cart_toggle) {
+                    var toggle = document.querySelector("a.cart-toggle");
+                    if (toggle) toggle.outerHTML = data.action_content_data.cart_toggle;
+                }
+                if (data.action_content_data.cart_toggle_sidebar) {
+                    var sidebarBlock = document.querySelector(".header-cart-wrapper .block-cart");
+                    if (sidebarBlock) sidebarBlock.outerHTML = data.action_content_data.cart_toggle_sidebar;
+                // Briefly show the cart dropdown
+                var wrapper = document.querySelector(".header-cart-wrapper");
+                if (wrapper) {
+                    wrapper.style.display = "block";
+                    setTimeout(function() { wrapper.style.display = ""; }, 5000);
+                }
+                }
+            } else if (data.content) {
                 var sidebar = document.getElementById('mini-cart-sidebar');
                 if (sidebar) {
                     sidebar.innerHTML = data.content;

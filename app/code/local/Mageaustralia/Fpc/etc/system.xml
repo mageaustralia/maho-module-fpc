@@ -269,6 +269,98 @@
                         </turbo_excluded_paths>
                     </fields>
                 </turbo>
+                <warmup translate="label" module="mageaustralia_fpc">
+                    <label>Cache Warmup</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>50</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>0</show_in_website>
+                    <show_in_store>0</show_in_store>
+                    <fields>
+                        <warmup_enabled translate="label comment">
+                            <label>Enable Cache Warmup</label>
+                            <comment>After a full FPC flush, automatically crawl sitemap URLs to pre-populate the cache.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/warmup_enabled</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_enabled>
+                        <warmup_batch_size translate="label comment">
+                            <label>URLs Per Cron Run</label>
+                            <comment>Maximum URLs to warm per cron execution (runs every minute). Large sitemaps are spread across multiple runs.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/warmup_batch_size</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_batch_size>
+                        <warmup_delay_ms translate="label comment">
+                            <label>Delay Between Requests (ms)</label>
+                            <comment>Milliseconds to wait between requests. Prevents server overload. 0 = no delay, 100 = recommended.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/warmup_delay_ms</config_path>
+                            <sort_order>30</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_delay_ms>
+                        <warmup_sitemap_path translate="label comment">
+                            <label>Sitemap Path</label>
+                            <comment>Path to sitemap.xml (relative to web root, e.g. "sitemap.xml"). Leave empty to auto-detect from Catalog > Sitemap config.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/warmup_sitemap_path</config_path>
+                            <sort_order>40</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_sitemap_path>
+                        <warmup_basic_auth translate="label comment">
+                            <label>Basic Auth (staging only)</label>
+                            <comment>If the site requires HTTP basic auth (e.g. staging), enter as user:password. Leave empty for production.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/warmup_basic_auth</config_path>
+                            <sort_order>50</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_basic_auth>
+                    </fields>
+                </warmup>
+                <statistics translate="label" module="mageaustralia_fpc">
+                    <label>Statistics</label>
+                    <frontend_type>text</frontend_type>
+                    <sort_order>60</sort_order>
+                    <show_in_default>1</show_in_default>
+                    <show_in_website>0</show_in_website>
+                    <show_in_store>0</show_in_store>
+                    <fields>
+                        <stats_enabled translate="label comment">
+                            <label>Enable Statistics</label>
+                            <comment>Track FPC hits, misses, flushes, and purges in the database. Useful for monitoring cache effectiveness.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/stats_enabled</config_path>
+                            <sort_order>10</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </stats_enabled>
+                        <stats_retention_days translate="label comment">
+                            <label>Retention Days</label>
+                            <comment>Delete stats older than this many days. Default: 30.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/stats_retention_days</config_path>
+                            <sort_order>20</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </stats_retention_days>
+                    </fields>
+                </statistics>
             </groups>
         </mageaustralia_fpc>
     </sections>

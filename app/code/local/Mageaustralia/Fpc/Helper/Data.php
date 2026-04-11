@@ -517,6 +517,207 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return trim($parsed['path'] ?? '/', '/');
     }
 
+    // ── Stats Query Methods ─────────────────────────────────────────
+
+    /**
+     * Get the FPC hit rate as a percentage for the given time window.
+     *
+     * @return array{hits: int, misses: int, total: int, rate: float}
+     */
+    public function getHitRate(int $hours = 24): array
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, [
+                'hits'   => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'hit' THEN 1 ELSE 0 END)"),
+                'misses' => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'miss' THEN 1 ELSE 0 END)"),
+            ])
+            ->where('event_type IN (?)', ['hit', 'miss'])
+            ->where('created_at >= ?', $since);
+
+        $row = $read->fetchRow($select);
+
+        $hits = (int) ($row['hits'] ?? 0);
+        $misses = (int) ($row['misses'] ?? 0);
+        $total = $hits + $misses;
+
+        return [
+            'hits'   => $hits,
+            'misses' => $misses,
+            'total'  => $total,
+            'rate'   => $total > 0 ? round(($hits / $total) * 100, 2) : 0.0,
+        ];
+    }
+
+    /**
+     * Get the number of FPC flushes in the given time window.
+     */
+    public function getFlushCount(int $hours = 24): int
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, ['cnt' => new Maho\Db\Expr('COUNT(*)')])
+            ->where('event_type = ?', 'flush')
+            ->where('created_at >= ?', $since);
+
+        return (int) $read->fetchOne($select);
+    }
+
+    /**
+     * Get the average TTFB in milliseconds for cache misses.
+     */
+    public function getAverageTtfb(int $hours = 24): float
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, ['avg_ttfb' => new Maho\Db\Expr('AVG(ttfb_ms)')])
+            ->where('event_type IN (?)', ['hit', 'miss'])
+            ->where('ttfb_ms IS NOT NULL')
+            ->where('created_at >= ?', $since);
+
+        $result = $read->fetchOne($select);
+
+        return $result !== false && $result !== null ? round((float) $result, 1) : 0.0;
+    }
+
+    /**
+     * Get the most frequently missed URLs.
+     *
+     * @return array<int, array{url_path: string, miss_count: int}>
+     */
+    public function getTopMissedUrls(int $limit = 10, int $hours = 24): array
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, [
+                'url_path'   => 'url_path',
+                'miss_count' => new Maho\Db\Expr('COUNT(*)'),
+            ])
+            ->where('event_type IN (?)', ['hit', 'miss'])
+            ->where('created_at >= ?', $since)
+            ->where('url_path != ?', '')
+            ->group('url_path')
+            ->order('miss_count DESC')
+            ->limit($limit);
+
+        $rows = $read->fetchAll($select);
+
+        return array_map(static function (array $row): array {
+            return [
+                'url_path'   => $row['url_path'],
+                'miss_count' => (int) $row['miss_count'],
+            ];
+        }, $rows);
+    }
+
+    /**
+     * Get recent flush events with their reasons.
+     *
+     * @return array<int, array{flush_reason: string, created_at: string, store_code: string}>
+     */
+    public function getRecentFlushes(int $limit = 20, int $hours = 24): array
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, ['flush_reason', 'created_at', 'store_code'])
+            ->where('event_type IN (?)', ['flush', 'purge'])
+            ->where('created_at >= ?', $since)
+            ->order('created_at DESC')
+            ->limit($limit);
+
+        return $read->fetchAll($select);
+    }
+
+    /**
+     * Get hourly hit/miss counts for the given time window.
+     *
+     * Returns one row per hour bucket with hits and misses.
+     * Hours with no data are filled with zeros.
+     *
+     * @return array<int, array{hour: string, hits: int, misses: int}>
+     */
+    public function getHourlyStats(int $hours = 24): array
+    {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, [
+                'hour'   => new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"),
+                'hits'   => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'hit' THEN 1 ELSE 0 END)"),
+                'misses' => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'miss' THEN 1 ELSE 0 END)"),
+            ])
+            ->where('event_type IN (?)', ['hit', 'miss'])
+            ->where('created_at >= ?', $since)
+            ->group(new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"))
+            ->order('hour ASC');
+
+        $rows = $read->fetchAll($select);
+
+        // Build a lookup from DB results
+        $dataByHour = [];
+        foreach ($rows as $row) {
+            $dataByHour[$row['hour']] = [
+                'hour'   => $row['hour'],
+                'hits'   => (int) $row['hits'],
+                'misses' => (int) $row['misses'],
+            ];
+        }
+
+        // Fill in all hour buckets (so the chart has no gaps)
+        $result = [];
+        $now = time();
+        for ($i = $hours; $i >= 0; $i--) {
+            $hourKey = date('Y-m-d H:00', $now - ($i * 3600));
+            if (isset($dataByHour[$hourKey])) {
+                $result[] = $dataByHour[$hourKey];
+            } else {
+                $result[] = [
+                    'hour'   => $hourKey,
+                    'hits'   => 0,
+                    'misses' => 0,
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+
+
+    // ── Stats Internal Helpers ──────────────────────────────────────
+
+    private function getStatsReadConnection(): \Varien_Db_Adapter_Interface
+    {
+        return Mage::getSingleton('core/resource')->getConnection('core_read');
+    }
+
+    private function getStatsTable(): string
+    {
+        return Mage::getSingleton('core/resource')->getTableName('mageaustralia_fpc/stats');
+    }
+
+    private function getStatsSince(int $hours): string
+    {
+        return date('Y-m-d H:i:s', time() - ($hours * 3600));
+    }
+
     // ── Internal ────────────────────────────────────────────────────
 
     /**

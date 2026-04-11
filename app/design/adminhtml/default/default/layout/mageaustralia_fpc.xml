@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<layout>
+    <adminhtml_fpcstats_index>
+        <reference name="content">
+            <block type="mageaustralia_fpc/adminhtml_stats_dashboard" name="fpc.stats.dashboard" />
+        </reference>
+    </adminhtml_fpcstats_index>
+</layout>
