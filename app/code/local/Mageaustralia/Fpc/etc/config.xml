@@ -2,7 +2,7 @@
 <config>
     <modules>
         <Mageaustralia_Fpc>
-            <version>1.0.0</version>
+            <version>1.1.0</version>
         </Mageaustralia_Fpc>
     </modules>
     <global>
@@ -18,8 +18,24 @@
         <models>
             <mageaustralia_fpc>
                 <class>Mageaustralia_Fpc_Model</class>
+                <resourceModel>mageaustralia_fpc_resource</resourceModel>
             </mageaustralia_fpc>
+            <mageaustralia_fpc_resource>
+                <class>Mageaustralia_Fpc_Model_Resource</class>
+                <entities>
+                    <stats>
+                        <table>mageaustralia_fpc_stats</table>
+                    </stats>
+                </entities>
+            </mageaustralia_fpc_resource>
         </models>
+        <resources>
+            <mageaustralia_fpc_setup>
+                <setup>
+                    <module>Mageaustralia_Fpc</module>
+                </setup>
+            </mageaustralia_fpc_setup>
+        </resources>
         <blocks>
             <mageaustralia_fpc>
                 <class>Mageaustralia_Fpc_Block</class>
@@ -165,9 +181,32 @@
                     <model>mageaustralia_fpc/observer::cleanExpiredCache</model>
                 </run>
             </mageaustralia_fpc_cleanup>
+            <mageaustralia_fpc_warmup>
+                <schedule>
+                    <cron_expr>* * * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::processWarmup</model>
+                </run>
+            </mageaustralia_fpc_warmup>
+            <mageaustralia_fpc_stats_cleanup>
+                <schedule>
+                    <cron_expr>0 3 * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::cleanOldStats</model>
+                </run>
+            </mageaustralia_fpc_stats_cleanup>
         </jobs>
     </crontab>
     <adminhtml>
+        <layout>
+            <updates>
+                <mageaustralia_fpc>
+                    <file>mageaustralia_fpc.xml</file>
+                </mageaustralia_fpc>
+            </updates>
+        </layout>
         <events>
             <admin_system_config_changed_section_mageaustralia_fpc>
                 <observers>
@@ -185,9 +224,7 @@
             <adminhtml>
                 <args>
                     <modules>
-                        <mageaustralia_fpc before="Mage_Adminhtml">
-                            Mageaustralia_Fpc_Adminhtml
-                        </mageaustralia_fpc>
+                        <mageaustralia_fpc before="Mage_Adminhtml">Mageaustralia_Fpc_Adminhtml</mageaustralia_fpc>
                     </modules>
                 </args>
             </adminhtml>
@@ -264,6 +301,13 @@ srsltid</miss_uri_params>
                 <turbo_product>0</turbo_product>
                 <turbo_cms>1</turbo_cms>
                 <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/,/catalog/product_compare/,/newsletter/,/sendfriend/,/tag/,/poll/</turbo_excluded_paths>
+                <warmup_enabled>0</warmup_enabled>
+                <warmup_batch_size>200</warmup_batch_size>
+                <warmup_delay_ms>100</warmup_delay_ms>
+                <warmup_sitemap_path></warmup_sitemap_path>
+                <warmup_basic_auth></warmup_basic_auth>
+                <stats_enabled>0</stats_enabled>
+                <stats_retention_days>30</stats_retention_days>
             </fpc>
         </system>
     </default>

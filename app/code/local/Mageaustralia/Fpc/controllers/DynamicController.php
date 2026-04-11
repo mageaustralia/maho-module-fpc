@@ -29,6 +29,24 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
      */
     public function indexAction(): void
     {
+        // Log FPC cache hit for stats tracking
+        $pagePath = trim((string) $this->getRequest()->getParam('p', ''));
+        if ($pagePath !== '' && Mage::getStoreConfigFlag('system/fpc/stats_enabled')) {
+            try {
+                $db = Mage::getSingleton('core/resource')->getConnection('core_write');
+                $table = Mage::getSingleton('core/resource')->getTableName('mageaustralia_fpc_stats');
+                $db->insert($table, [
+                    'event_type' => 'hit',
+                    'url_path'   => '/' . ltrim(substr($pagePath, 0, 500), '/'),
+                    'ttfb_ms'    => (int) $this->getRequest()->getParam('ttfb', 0),
+                    'store_code' => Mage::app()->getStore()->getCode(),
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            } catch (\Throwable $e) {
+                // Don't let stats tracking break the dynamic loader
+            }
+        }
+
         $blockParam = trim((string) $this->getRequest()->getParam('blocks', ''));
 
         $requestedNames = $blockParam !== ''
@@ -65,6 +83,31 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
         /** @var Mageaustralia_Fpc_Model_Ajax_Core $ajaxCore */
         $ajaxCore = Mage::getModel('mageaustralia_fpc/ajax_core');
 
+        // Get form key and force-persist to session file
+        $formKey = Mage::getSingleton('core/session')->getFormKey();
+
+        // Maho uses Symfony session handler which doesn't always persist
+        // $_SESSION mutations made through Maho's namespace references.
+        // Write directly to session file after close as a workaround.
+        $sessionId = session_id();
+        register_shutdown_function(function () use ($sessionId, $formKey) {
+            $path = Mage::getBaseDir('session') . '/sess_' . $sessionId;
+            if (!is_file($path)) {
+                return;
+            }
+            $data = file_get_contents($path);
+            if ($data === false || str_contains($data, '_form_key')) {
+                return;
+            }
+            // Inject _form_key into the core namespace
+            $data = str_replace(
+                'core|a:1:{s:8:"messages"',
+                'core|a:2:{s:9:"_form_key";s:16:"' . $formKey . '";s:8:"messages"',
+                $data,
+            );
+            file_put_contents($path, $data, LOCK_EX);
+        });
+
         $this->sendJson([
             'success'        => true,
             'blocks'         => $result,
@@ -72,7 +115,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
             'cart_qty'       => $ajaxCore->getCartQty(),
             'compare_count'  => (int) Mage::helper('catalog/product_compare')->getItemCount(),
             'wishlist_count' => (int) Mage::helper('wishlist')->getItemCount(),
-            'form_key'       => $ajaxCore->getFormKey(),
+            'form_key'       => $formKey,
         ]);
     }
 

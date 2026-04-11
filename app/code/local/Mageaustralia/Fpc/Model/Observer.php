@@ -21,6 +21,9 @@ class Mageaustralia_Fpc_Model_Observer
     private ?Mageaustralia_Fpc_Helper_Data $helper = null;
     private ?Mageaustralia_Fpc_Model_Cache $cache = null;
 
+    /** @var array<int, array{event_type: string, url_path: string, ttfb_ms: ?int, flush_reason: ?string, store_code: string}> */
+    private array $statsBatch = [];
+
     // ── Cache Write ─────────────────────────────────────────────────
 
     /**
@@ -110,6 +113,10 @@ class Mageaustralia_Fpc_Model_Observer
             $response->setHeader('X-Fpc', 'MISS', true);
             $response->setHeader('X-FPC-Age', '0', true);
         }
+
+        // Log miss — this page was not cached, we just wrote it
+        $urlPath = trim($request->getOriginalPathInfo() ?: $request->getPathInfo(), '/');
+        $this->logStat('miss', $urlPath);
     }
 
     // ── Cache Hit ───────────────────────────────────────────────────
@@ -154,6 +161,8 @@ class Mageaustralia_Fpc_Model_Observer
         $cacheKey = $helper->buildCacheKey($request);
         $cache = $this->getCache();
 
+        $urlPath = trim($request->getOriginalPathInfo() ?: $request->getPathInfo(), '/');
+
         if (!$cache->exists($cacheKey)) {
             return;
         }
@@ -162,6 +171,10 @@ class Mageaustralia_Fpc_Model_Observer
         if ($html === null) {
             return;
         }
+
+        // Log hit and flush stats before exit
+        $this->logStat('hit', $urlPath);
+        $this->flushStatsBatch();
 
         // Serve cached response
         $response = $action->getResponse();
@@ -210,6 +223,8 @@ class Mageaustralia_Fpc_Model_Observer
 
         $urls = $this->getHelper()->getProductUrls($product);
         $this->getCache()->purgeByPaths($urls);
+
+        $this->logStat('purge', implode(', ', $urls), null, 'product_save:' . $product->getSku());
     }
 
     // ── Invalidation: Category Save ─────────────────────────────────
@@ -233,6 +248,8 @@ class Mageaustralia_Fpc_Model_Observer
 
         $urls = $this->getHelper()->getCategoryUrls($category);
         $this->getCache()->purgeByPaths($urls);
+
+        $this->logStat('purge', implode(', ', $urls), null, 'category_save:' . $category->getName());
     }
 
     // ── Invalidation: CMS Page Save ─────────────────────────────────
@@ -266,6 +283,8 @@ class Mageaustralia_Fpc_Model_Observer
         }
 
         $this->getCache()->purgeByPaths($paths);
+
+        $this->logStat('purge', implode(', ', $paths), null, 'cms_page_save:' . $identifier);
     }
 
     // ── Invalidation: CMS Block Save ────────────────────────────────
@@ -291,15 +310,10 @@ class Mageaustralia_Fpc_Model_Observer
 
         // CMS blocks can appear anywhere — flush all
         $this->getCache()->flush();
+
+        $this->logStat('flush', '*', null, 'cms_block_save:' . $block->getIdentifier());
     }
 
-    // ── Invalidation: Stock Change ──────────────────────────────────
-
-    /**
-     * Purge FPC entries when product stock changes.
-     *
-     * Event: cataloginventory_stock_item_save_after
-     */
     // ── Invalidation: Blog Post Save ────────────────────────────────
 
     /**
@@ -334,7 +348,11 @@ class Mageaustralia_Fpc_Model_Observer
         if (is_array($categoryIds)) {
             foreach ($categoryIds as $catId) {
                 try {
-                    $category = Mage::getModel('maho_blog/category')->load($catId);
+                    $category = Mage::getModel('maho_blog/category'); // @phpstan-ignore mage.invalidType
+                    if (!$category) {
+                        continue;
+                    }
+                    $category->load($catId);
                     if ($category->getId() && $category->getUrlKey()) {
                         $paths[] = 'blog/category/' . $category->getUrlKey();
                     }
@@ -344,11 +362,19 @@ class Mageaustralia_Fpc_Model_Observer
             }
         }
 
-        if (!empty($paths)) {
+        if (count($paths) > 0) {
             $this->getCache()->purgeByPaths($paths);
+            $this->logStat('purge', implode(', ', $paths), null, 'blog_post_save:' . $urlKey);
         }
     }
 
+    // ── Invalidation: Stock Change ──────────────────────────────────
+
+    /**
+     * Purge FPC entries when product stock changes.
+     *
+     * Event: cataloginventory_stock_item_save_after
+     */
     public function onStockSave(Varien_Event_Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
@@ -375,6 +401,7 @@ class Mageaustralia_Fpc_Model_Observer
         if ($product->getId()) {
             $urls = $this->getHelper()->getProductUrls($product);
             $this->getCache()->purgeByPaths($urls);
+            $this->logStat('purge', implode(', ', $urls), null, 'stock_change:' . $product->getSku());
         }
     }
 
@@ -409,6 +436,7 @@ class Mageaustralia_Fpc_Model_Observer
 
         if (empty($tags)) {
             $this->getCache()->flush();
+            $this->logStat('flush', '*', null, 'cache_clean:all_tags');
             return;
         }
 
@@ -416,9 +444,165 @@ class Mageaustralia_Fpc_Model_Observer
             foreach ($relevantPrefixes as $prefix) {
                 if (str_starts_with($tag, $prefix)) {
                     $this->getCache()->flush();
+                    $this->logStat('flush', '*', null, 'cache_clean:' . implode(',', $tags));
                     return;
                 }
             }
+        }
+    }
+
+    // ── Refresh Actions ─────────────────────────────────────────────
+
+    /**
+     * Flush FPC after configured refresh actions complete.
+     *
+     * Event: controller_action_postdispatch
+     */
+    public function onRefreshAction(Varien_Event_Observer $observer): void
+    {
+        if (!$this->getHelper()->isEnabled()) {
+            return;
+        }
+
+        $action = $observer->getEvent()->getControllerAction();
+        if (!$action) {
+            return;
+        }
+
+        $request = $action->getRequest();
+        $fullActionName = $request->getRequestedRouteName() . '_'
+            . $request->getRequestedControllerName() . '_'
+            . $request->getRequestedActionName();
+
+        $refreshActions = $this->getHelper()->getRefreshActions();
+        if (in_array($fullActionName, $refreshActions, true)) {
+            $this->getCache()->flush();
+            $this->logStat('flush', '*', null, 'refresh_action:' . $fullActionName);
+        }
+
+        // Flush pending stats at end of request
+        $this->flushStatsBatch();
+    }
+
+    // ── Config Changed ──────────────────────────────────────────────
+
+    /**
+     * Handle FPC config changes in admin.
+     *
+     * Event: admin_system_config_changed_section_mageaustralia_fpc
+     */
+    public function onFpcConfigChanged(Varien_Event_Observer $observer): void
+    {
+        // Flush FPC when config changes — cached pages may reflect old settings
+        $this->getCache()->flush();
+        $this->logStat('flush', '*', null, 'config_changed');
+        $this->flushStatsBatch();
+        Mage::log('FPC: config changed, flushed all cache entries', 6);
+    }
+
+    // ── Async Flush ─────────────────────────────────────────────────
+
+    /**
+     * Queue an entity for async flush (processed by cron every minute).
+     */
+    private function queueAsyncFlush(string $type, int $entityId): void
+    {
+        $flagFile = Mage::getBaseDir('var') . '/fpc_async_queue.json';
+        $queue = [];
+
+        if (is_file($flagFile)) {
+            $raw = file_get_contents($flagFile);
+            if ($raw !== false) {
+                $queue = json_decode($raw, true) ?: [];
+            }
+        }
+
+        $queue[$type][$entityId] = time();
+        file_put_contents($flagFile, json_encode($queue), LOCK_EX);
+    }
+
+    /**
+     * Cron: process queued async flushes (runs every minute).
+     */
+    public function processAsyncFlush(): void
+    {
+        $flagFile = Mage::getBaseDir('var') . '/fpc_async_queue.json';
+
+        if (!is_file($flagFile)) {
+            return;
+        }
+
+        $raw = file_get_contents($flagFile);
+        if ($raw === false) {
+            return;
+        }
+
+        $queue = json_decode($raw, true);
+        if (empty($queue)) {
+            @unlink($flagFile);
+            return;
+        }
+
+        // Remove first to avoid race conditions with concurrent saves
+        @unlink($flagFile);
+
+        $helper = $this->getHelper();
+        $cache = $this->getCache();
+
+        if (!empty($queue['products'])) {
+            foreach (array_keys($queue['products']) as $productId) {
+                try {
+                    $product = Mage::getModel('catalog/product')->load($productId);
+                    if ($product->getId()) {
+                        $urls = $helper->getProductUrls($product);
+                        $cache->purgeByPaths($urls);
+                        $this->logStat('purge', implode(', ', $urls), null, 'async_flush:product_' . $productId);
+                    }
+                } catch (\Throwable $e) {
+                    Mage::log('FPC async flush error for product ' . $productId . ': ' . $e->getMessage(), 3);
+                }
+            }
+        }
+
+        $this->flushStatsBatch();
+    }
+
+    /**
+     * Cron: clean expired FPC files (runs every 6 hours).
+     */
+    public function cleanExpiredCache(): void
+    {
+        $helper = $this->getHelper();
+        $fpcDir = $helper->getFpcDir();
+
+        if (!is_dir($fpcDir)) {
+            return;
+        }
+
+        $lifetime = $helper->getCacheLifetime();
+        $now = time();
+        $count = 0;
+
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($fpcDir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($items as $item) {
+            if ($item->isFile()) {
+                $mtime = $item->getMTime();
+                if (($now - $mtime) > $lifetime) {
+                    @unlink($item->getPathname());
+                    $count++;
+                }
+            } elseif ($item->isDir()) {
+                // Remove empty directories
+                @rmdir($item->getPathname());
+            }
+        }
+
+        if ($count > 0) {
+            Mage::log("FPC: cleaned {$count} expired cache files", 6);
         }
     }
 
@@ -521,6 +705,110 @@ class Mageaustralia_Fpc_Model_Observer
 
         // Restore preserved blocks
         return str_replace(array_keys($preserved), array_values($preserved), $html);
+    }
+
+    // ── Cache Warmup ────────────────────────────────────────────────
+
+    /**
+     * Cron: process cache warmup batch (runs every minute).
+     */
+    public function processWarmup(): void
+    {
+        if (!Mage::getStoreConfigFlag('system/fpc/warmup_enabled')) {
+            return;
+        }
+
+        /** @var Mageaustralia_Fpc_Model_Warmup $warmup */
+        $warmup = Mage::getModel('mageaustralia_fpc/warmup');
+        $warmup->runBatch();
+    }
+
+
+    // ── Stats Logging ───────────────────────────────────────────────
+
+    /**
+     * Log an FPC stat event. Batches inserts for performance.
+     *
+     * Events are queued in memory and written as a single multi-row INSERT
+     * at the end of the request (via flushStatsBatch) or when the batch
+     * reaches 50 records.
+     */
+    private function logStat(
+        string $eventType,
+        string $urlPath = '',
+        ?int $ttfbMs = null,
+        ?string $flushReason = null,
+    ): void {
+        if (!Mage::getStoreConfigFlag('system/fpc/stats_enabled')) {
+            return;
+        }
+
+        try {
+            $storeCode = Mage::app()->getStore()->getCode();
+        } catch (\Throwable) {
+            $storeCode = 'default';
+        }
+
+        $this->statsBatch[] = [
+            'event_type'   => $eventType,
+            'url_path'     => substr($urlPath, 0, 500),
+            'ttfb_ms'      => $ttfbMs,
+            'flush_reason' => $flushReason !== null ? substr($flushReason, 0, 255) : null,
+            'store_code'   => $storeCode,
+            'created_at'   => date('Y-m-d H:i:s'),
+        ];
+
+        // Auto-flush batch at 50 records to avoid unbounded memory use
+        if (count($this->statsBatch) >= 50) {
+            $this->flushStatsBatch();
+        }
+    }
+
+    /**
+     * Write batched stats to the database in a single multi-row INSERT.
+     */
+    private function flushStatsBatch(): void
+    {
+        if (empty($this->statsBatch)) {
+            return;
+        }
+
+        try {
+            $resource = Mage::getSingleton('core/resource');
+            $write = $resource->getConnection('core_write');
+            $table = $resource->getTableName('mageaustralia_fpc/stats');
+
+            $write->insertMultiple($table, $this->statsBatch);
+        } catch (\Throwable $e) {
+            Mage::log('FPC stats write error: ' . $e->getMessage(), 3);
+        }
+
+        $this->statsBatch = [];
+    }
+
+    /**
+     * Cron: delete stats older than configured retention period.
+     *
+     * Runs daily at 3am (configured in config.xml).
+     */
+    public function cleanOldStats(): void
+    {
+        $days = (int) (Mage::getStoreConfig('system/fpc/stats_retention_days') ?: 30);
+
+        try {
+            $resource = Mage::getSingleton('core/resource');
+            $write = $resource->getConnection('core_write');
+            $table = $resource->getTableName('mageaustralia_fpc/stats');
+
+            $cutoff = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+            $deleted = $write->delete($table, ['created_at < ?' => $cutoff]);
+
+            if ($deleted > 0) {
+                Mage::log("FPC: cleaned {$deleted} stats records older than {$days} days", 6);
+            }
+        } catch (\Throwable $e) {
+            Mage::log('FPC stats cleanup error: ' . $e->getMessage(), 3);
+        }
     }
 
     // ── Lazy Accessors ──────────────────────────────────────────────
