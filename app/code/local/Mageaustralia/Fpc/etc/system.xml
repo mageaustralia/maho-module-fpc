@@ -267,6 +267,36 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </turbo_excluded_paths>
+                        <minicart_block translate="label comment">
+                            <label>Minicart Layout Block Name</label>
+                            <comment>The Maho layout block name for the mini-cart sidebar. Used by /fpc/dynamic/minicart to render fresh cart HTML on click.</comment>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>70</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <config_path>system/fpc/minicart_block</config_path>
+                        </minicart_block>
+                        <minicart_selector translate="label comment">
+                            <label>Minicart Container CSS Selector</label>
+                            <comment>CSS selector for the cart dropdown trigger element. An AJAX call fetches fresh cart HTML when this element is clicked.</comment>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>71</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <config_path>system/fpc/minicart_selector</config_path>
+                        </minicart_selector>
+                        <minicart_content_selector translate="label comment">
+                            <label>Minicart Content CSS Selector</label>
+                            <comment>CSS selector for the element whose innerHTML is replaced with fresh cart HTML.</comment>
+                            <frontend_type>text</frontend_type>
+                            <sort_order>72</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                            <config_path>system/fpc/minicart_content_selector</config_path>
+                        </minicart_content_selector>
                     </fields>
                 </turbo>
                 <warmup translate="label" module="mageaustralia_fpc">

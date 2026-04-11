@@ -140,8 +140,14 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
 
         $this->loadLayout(['default']);
 
-        $block = $this->getLayout()->getBlock('minicart_content')
-            ?: $this->getLayout()->getBlock('cart_sidebar');
+        $blockName = Mage::getStoreConfig('system/fpc/minicart_block') ?: 'cart_sidebar';
+        $block = $this->getLayout()->getBlock($blockName);
+
+        // Fallback: create block directly if layout doesn't have it
+        if (!$block) {
+            $block = $this->getLayout()->createBlock('checkout/cart_sidebar')
+                ->setTemplate('checkout/cart/sidebar.phtml');
+        }
 
         $this->getResponse()
             ->setHeader('Content-Type', 'text/html; charset=UTF-8', true)

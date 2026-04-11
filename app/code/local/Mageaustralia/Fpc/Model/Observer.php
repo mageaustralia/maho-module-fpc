@@ -117,6 +117,7 @@ class Mageaustralia_Fpc_Model_Observer
         // Log miss — this page was not cached, we just wrote it
         $urlPath = trim($request->getOriginalPathInfo() ?: $request->getPathInfo(), '/');
         $this->logStat('miss', $urlPath);
+        $this->flushStatsBatch();
     }
 
     // ── Cache Hit ───────────────────────────────────────────────────
