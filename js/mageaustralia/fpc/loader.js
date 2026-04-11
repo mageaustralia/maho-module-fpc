@@ -101,6 +101,32 @@
                 twBadge.textContent = cartQty > 0 ? String(cartQty) : '';
             }
 
+            // Fetch fresh minicart on cart dropdown open
+            var minicartTriggerSel = document.querySelector('[data-fpc-minicart-trigger]')
+                ? document.querySelector('[data-fpc-minicart-trigger]').getAttribute('data-fpc-minicart-trigger')
+                : '.twa-header__cart-summary-wrapper';
+            var minicartContentSel = document.querySelector('[data-fpc-minicart-content]')
+                ? document.querySelector('[data-fpc-minicart-content]').getAttribute('data-fpc-minicart-content')
+                : '.header-cart-wrapper .block-cart .block-content';
+            var cartWrapper = document.querySelector(minicartTriggerSel);
+            if (cartWrapper && !cartWrapper._fpcMinicartBound) {
+                cartWrapper._fpcMinicartBound = true;
+                cartWrapper.addEventListener('click', function(e) {
+                    var blockContent = document.querySelector(minicartContentSel);
+                    if (!blockContent) return;
+                    fetch('/fpc/dynamic/minicart/', {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    })
+                    .then(function(r) { return r.text(); })
+                    .then(function(html) {
+                        if (html && html.trim()) {
+                            blockContent.innerHTML = html;
+                        }
+                    })
+                    .catch(function() {});
+                });
+            }
+
             // Update TW theme cart sidebar from dynamic data
             var cartBlock = document.querySelector('.header-cart-wrapper .block-cart .block-content');
             if (cartBlock && typeof data.cart_qty !== 'undefined') {
