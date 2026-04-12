@@ -157,7 +157,7 @@ class Mageaustralia_Fpc_Model_Cache
      * With path-based cache keys, purging is straightforward:
      * delete the exact file + glob for parameterized/group variants.
      *
-     * @param string[] $paths Relative URL paths (e.g. "pickleball-paddles.html")
+     * @param string[] $paths Relative URL paths (e.g. "shoes.html")
      */
     public function purgeByPaths(array $paths): void
     {

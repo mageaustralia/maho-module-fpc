@@ -237,10 +237,10 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
      * Format: {store_code}/{url_path}[__param-val][__gN].html
      *
      * Examples:
-     *   picklewarehouse/pickleball-paddles.html           (base URL)
-     *   picklewarehouse/pickleball-paddles__p-2.html      (page 2)
-     *   picklewarehouse/pickleball-paddles__g1.html       (customer group 1)
-     *   picklewarehouse/index.html                        (homepage)
+     *   default/shoes.html                (base URL)
+     *   default/shoes__p-2.html           (page 2)
+     *   default/shoes__g1.html            (customer group 1)
+     *   default/index.html                (homepage)
      */
     public function buildCacheKey(?Mage_Core_Controller_Request_Http $request = null): string
     {
