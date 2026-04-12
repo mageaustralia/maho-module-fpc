@@ -17,30 +17,30 @@ $tableName = $installer->getTable('mageaustralia_fpc/stats');
 if (!$installer->getConnection()->isTableExists($tableName)) {
     $table = $installer->getConnection()
         ->newTable($tableName)
-        ->addColumn('id', Varien_Db_Ddl_Table::TYPE_INTEGER, null, [
+        ->addColumn('id', Maho\Db\Ddl\Table::TYPE_INTEGER, null, [
             'identity' => true,
             'unsigned' => true,
             'nullable' => false,
             'primary'  => true,
         ], 'Record ID')
-        ->addColumn('event_type', Varien_Db_Ddl_Table::TYPE_TEXT, 10, [
+        ->addColumn('event_type', Maho\Db\Ddl\Table::TYPE_TEXT, 10, [
             'nullable' => false,
         ], 'Event type: hit, miss, flush, warmup, purge')
-        ->addColumn('url_path', Varien_Db_Ddl_Table::TYPE_TEXT, 500, [
+        ->addColumn('url_path', Maho\Db\Ddl\Table::TYPE_TEXT, 500, [
             'nullable' => true,
         ], 'Page URL path')
-        ->addColumn('ttfb_ms', Varien_Db_Ddl_Table::TYPE_INTEGER, null, [
+        ->addColumn('ttfb_ms', Maho\Db\Ddl\Table::TYPE_INTEGER, null, [
             'unsigned' => true,
             'nullable' => true,
         ], 'Time-to-first-byte in ms (misses only)')
-        ->addColumn('flush_reason', Varien_Db_Ddl_Table::TYPE_TEXT, 255, [
+        ->addColumn('flush_reason', Maho\Db\Ddl\Table::TYPE_TEXT, 255, [
             'nullable' => true,
         ], 'What triggered the flush/purge')
-        ->addColumn('store_code', Varien_Db_Ddl_Table::TYPE_TEXT, 50, [
+        ->addColumn('store_code', Maho\Db\Ddl\Table::TYPE_TEXT, 50, [
             'nullable' => false,
             'default'  => '',
         ], 'Store code')
-        ->addColumn('created_at', Varien_Db_Ddl_Table::TYPE_DATETIME, null, [
+        ->addColumn('created_at', Maho\Db\Ddl\Table::TYPE_DATETIME, null, [
             'nullable' => false,
         ], 'Event timestamp')
         ->addIndex(

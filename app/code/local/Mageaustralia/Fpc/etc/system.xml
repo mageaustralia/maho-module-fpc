@@ -267,36 +267,115 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </turbo_excluded_paths>
-                        <minicart_block translate="label comment">
-                            <label>Minicart Layout Block Name</label>
-                            <comment>The Maho layout block name for the mini-cart sidebar. Used by /fpc/dynamic/minicart to render fresh cart HTML on click.</comment>
+                        <cart_qty_selector translate="label comment">
+                            <label>Cart Qty Selector</label>
+                            <comment><![CDATA[CSS selector(s) for elements that display the cart item count. Multiple selectors comma-separated.<br/>
+                            e.g. <code>.skip-cart .count, .cart-toggle .badge</code>]]></comment>
                             <frontend_type>text</frontend_type>
-                            <sort_order>70</sort_order>
+                            <config_path>system/fpc/cart_qty_selector</config_path>
+                            <sort_order>60</sort_order>
                             <show_in_default>1</show_in_default>
                             <show_in_website>1</show_in_website>
                             <show_in_store>1</show_in_store>
-                            <config_path>system/fpc/minicart_block</config_path>
-                        </minicart_block>
-                        <minicart_selector translate="label comment">
-                            <label>Minicart Container CSS Selector</label>
-                            <comment>CSS selector for the cart dropdown trigger element. An AJAX call fetches fresh cart HTML when this element is clicked.</comment>
+                        </cart_qty_selector>
+                        <minicart_trigger_selector translate="label comment">
+                            <label>Minicart Trigger Selector</label>
+                            <comment><![CDATA[CSS selector for the element that opens the mini-cart. Clicking this fetches fresh cart HTML via AJAX.<br/>
+                            e.g. <code>.skip-cart</code> or <code>.header-cart-wrapper</code>]]></comment>
                             <frontend_type>text</frontend_type>
-                            <sort_order>71</sort_order>
+                            <config_path>system/fpc/minicart_trigger_selector</config_path>
+                            <sort_order>61</sort_order>
                             <show_in_default>1</show_in_default>
                             <show_in_website>1</show_in_website>
                             <show_in_store>1</show_in_store>
-                            <config_path>system/fpc/minicart_selector</config_path>
-                        </minicart_selector>
+                        </minicart_trigger_selector>
                         <minicart_content_selector translate="label comment">
-                            <label>Minicart Content CSS Selector</label>
-                            <comment>CSS selector for the element whose innerHTML is replaced with fresh cart HTML.</comment>
+                            <label>Minicart Content Selector</label>
+                            <comment><![CDATA[CSS selector for the element whose innerHTML is replaced with fresh mini-cart HTML.<br/>
+                            e.g. <code>.block-cart .block-content</code>]]></comment>
                             <frontend_type>text</frontend_type>
-                            <sort_order>72</sort_order>
+                            <config_path>system/fpc/minicart_content_selector</config_path>
+                            <sort_order>62</sort_order>
                             <show_in_default>1</show_in_default>
                             <show_in_website>1</show_in_website>
                             <show_in_store>1</show_in_store>
-                            <config_path>system/fpc/minicart_content_selector</config_path>
                         </minicart_content_selector>
+                        <minicart_block translate="label comment">
+                            <label>Minicart Layout Block</label>
+                            <comment><![CDATA[Maho layout block name rendered by the minicart AJAX endpoint. Default: <code>cart_sidebar</code>]]></comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/minicart_block</config_path>
+                            <sort_order>63</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </minicart_block>
+                        <reset_remove_selectors translate="label comment">
+                            <label>Reset: Remove Elements</label>
+                            <comment><![CDATA[Comma-separated CSS selectors. Matching elements are <strong>removed from the DOM</strong> on Turbo navigation. Use for popup/overlay wrappers injected by JS libraries (Magnific Popup, modals, etc.).<br/>
+                            Examples: <code>.mfp-bg, .mfp-wrap, .modal-backdrop, .aa-DetachedOverlay</code>]]></comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/reset_remove_selectors</config_path>
+                            <sort_order>64</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_remove_selectors>
+                        <reset_close_selectors translate="label comment">
+                            <label>Reset: Close Elements</label>
+                            <comment><![CDATA[Comma-separated CSS selectors. The <code>open</code> class is <strong>removed</strong> from matching elements on Turbo navigation. Use for permanent page elements that toggle open/closed state.<br/>
+                            Examples: <code>.meilisearch-autocomplete.open, .search-overlay.active</code>]]></comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/reset_close_selectors</config_path>
+                            <sort_order>65</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_close_selectors>
+                        <reset_body_classes translate="label comment">
+                            <label>Reset: Body Classes</label>
+                            <comment><![CDATA[Comma-separated body classes that themes use to indicate "popup open" state. These will be <strong>removed</strong> from <code>&lt;body&gt;</code> on Turbo navigation.<br/>
+                            Examples: <code>modal-open, no-scroll, overflow-hidden, mfp-zoom-out-cur</code>]]></comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/reset_body_classes</config_path>
+                            <sort_order>66</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_body_classes>
+                        <reset_clear_inputs translate="label comment">
+                            <label>Reset: Clear Input Selectors</label>
+                            <comment><![CDATA[Comma-separated CSS selectors for input elements that should have their value cleared on Turbo navigation (e.g. search inputs).<br/>
+                            Examples: <code>.meilisearch-search-input, .search-input</code>]]></comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/reset_clear_inputs</config_path>
+                            <sort_order>67</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_clear_inputs>
+                        <reset_clone_selectors translate="label comment">
+                            <label>Reset: Clone Elements (Strip Listeners)</label>
+                            <comment><![CDATA[Comma-separated CSS selectors for elements that should be cloned-and-replaced on Turbo navigation. Cloning strips all JavaScript event listeners — essential for third-party libraries (like Meilisearch) that re-attach listeners on every init, causing AJAX request buildup.<br/>
+                            Examples: <code>.meilisearch-search-input, .algolia-search-input</code>]]></comment>
+                            <frontend_type>textarea</frontend_type>
+                            <config_path>system/fpc/reset_clone_selectors</config_path>
+                            <sort_order>67</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_clone_selectors>
+                        <reset_dispatch_escape translate="label comment">
+                            <label>Reset: Dispatch ESC Key</label>
+                            <comment>Dispatch an ESC keydown event on Turbo navigation. Most popup libraries close on ESC — this is the universal "close everything" trigger.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/reset_dispatch_escape</config_path>
+                            <sort_order>68</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </reset_dispatch_escape>
                     </fields>
                 </turbo>
                 <warmup translate="label" module="mageaustralia_fpc">
@@ -358,6 +437,16 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </warmup_basic_auth>
+                        <warmup_schedule translate="label comment">
+                            <label>Scheduled Warmup (Cron)</label>
+                            <comment><![CDATA[Optional cron expression to run warmup on a schedule (e.g. <code>0 */6 * * *</code> for every 6 hours). Leave empty to only warm after flushes. Only re-crawls URLs whose cache files are older than the cache lifetime.]]></comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/warmup_schedule</config_path>
+                            <sort_order>60</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </warmup_schedule>
                     </fields>
                 </warmup>
                 <statistics translate="label" module="mageaustralia_fpc">
@@ -380,8 +469,8 @@
                             <show_in_store>0</show_in_store>
                         </stats_enabled>
                         <stats_retention_days translate="label comment">
-                            <label>Retention Days</label>
-                            <comment>Delete stats older than this many days. Default: 30.</comment>
+                            <label>Raw Stats Retention Days</label>
+                            <comment>Delete raw stats older than this many days. Default: 30. Raw stats are rolled up into hourly aggregates automatically.</comment>
                             <frontend_type>text</frontend_type>
                             <config_path>system/fpc/stats_retention_days</config_path>
                             <sort_order>20</sort_order>
@@ -389,6 +478,16 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </stats_retention_days>
+                        <stats_rollup_retention_days translate="label comment">
+                            <label>Rollup Retention Days</label>
+                            <comment>Delete hourly rollup data older than this many days. Default: 90. This is your long-term stats history.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/stats_rollup_retention_days</config_path>
+                            <sort_order>25</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </stats_rollup_retention_days>
                     </fields>
                 </statistics>
             </groups>

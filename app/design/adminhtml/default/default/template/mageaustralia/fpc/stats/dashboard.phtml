@@ -11,13 +11,16 @@ $avgTtfb      = $this->getAverageTtfb();
 $topMissed    = $this->getTopMissedUrls();
 $recentFlush  = $this->getRecentFlushes();
 $hourlyStats  = $this->getHourlyStats();
+$hourlyTtfb   = $this->getHourlyTtfb();
 $periodHours  = $this->getPeriodHours();
 $periodLabel  = $this->getPeriodLabel();
 $periodOpts   = $this->getPeriodOptions();
+$storeOpts    = $this->getStoreOptions();
+$storeFilter  = $this->getStoreFilter();
 $statsEnabled = $this->isStatsEnabled();
 $fpcEnabled   = $this->isFpcEnabled();
 
-// Chart dimensions
+// Hit/Miss chart dimensions
 $chartW      = 800;
 $chartH      = 200;
 $chartPadL   = 50;
@@ -34,10 +37,23 @@ foreach ($hourlyStats as $h) {
         $maxVal = $total;
     }
 }
-// Round max up to a nice number
 $niceMax = (int) (ceil($maxVal / max(1, pow(10, floor(log10(max(1, $maxVal))) - 1))) * max(1, pow(10, floor(log10(max(1, $maxVal))) - 1)));
 if ($niceMax < 1) {
     $niceMax = 1;
+}
+
+// TTFB chart dimensions
+$ttfbCount = count($hourlyTtfb);
+$maxTtfb   = 1;
+foreach ($hourlyTtfb as $t) {
+    $val = max($t['avg_ttfb'], $t['p95_ttfb']);
+    if ($val > $maxTtfb) {
+        $maxTtfb = $val;
+    }
+}
+$niceTtfbMax = (int) (ceil($maxTtfb / max(1, pow(10, floor(log10(max(1, $maxTtfb))) - 1))) * max(1, pow(10, floor(log10(max(1, $maxTtfb))) - 1)));
+if ($niceTtfbMax < 1) {
+    $niceTtfbMax = 1;
 }
 ?>
 
@@ -49,6 +65,7 @@ if ($niceMax < 1) {
         display: flex; align-items: center; justify-content: space-between;
         margin-bottom: 24px; padding: 0;
     }
+    .fpc-dash .fpc-controls { display: flex; align-items: center; gap: 12px; }
     .fpc-dash .fpc-period-btns { display: flex; gap: 0; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; }
     .fpc-dash .fpc-period-btn {
         padding: 6px 16px; font-size: 13px; font-weight: 500;
@@ -58,6 +75,15 @@ if ($niceMax < 1) {
     .fpc-dash .fpc-period-btn:last-child { border-right: none; }
     .fpc-dash .fpc-period-btn:hover { background: #f3f4f6; }
     .fpc-dash .fpc-period-btn.active { background: #1a1a2e; color: #fff; }
+
+    .fpc-dash .fpc-store-select {
+        padding: 6px 32px 6px 12px; font-size: 13px; font-weight: 500;
+        border: 1px solid #d1d5db; border-radius: 6px; background: #fff;
+        color: #374151; cursor: pointer; appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236b7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 10px center;
+    }
+    .fpc-dash .fpc-store-select:hover { background-color: #f3f4f6; }
 
     .fpc-dash .fpc-alert {
         padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 20px;
@@ -111,6 +137,41 @@ if ($niceMax < 1) {
     .fpc-dash .fpc-empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; }
     .fpc-dash .fpc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 
+    /* Chart tooltip */
+    .fpc-dash .fpc-chart-wrap { position: relative; }
+    .fpc-dash svg rect[data-fpc-tip],
+    .fpc-dash svg circle[data-fpc-tip] { cursor: pointer; transition: opacity 0.1s; }
+    .fpc-dash svg rect[data-fpc-tip]:hover,
+    .fpc-dash svg circle[data-fpc-tip]:hover { opacity: 0.75; }
+    .fpc-dash .fpc-tooltip {
+        position: fixed;
+        background: #1a1a2e;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transform: translate(-50%, -100%) translateY(-8px);
+        transition: opacity 0.15s;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .fpc-dash .fpc-tooltip.visible { opacity: 1; }
+    .fpc-dash .fpc-tooltip::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: #1a1a2e;
+    }
+    .fpc-dash .fpc-tooltip-label { color: #9ca3af; font-size: 11px; margin-right: 6px; }
+    .fpc-dash .fpc-tooltip-time { color: #9ca3af; font-size: 11px; margin-bottom: 2px; }
+
     @media (max-width: 1100px) {
         .fpc-dash .fpc-cards { grid-template-columns: repeat(2, 1fr); }
         .fpc-dash .fpc-grid-2 { grid-template-columns: 1fr; }
@@ -121,15 +182,32 @@ if ($niceMax < 1) {
     <div class="fpc-period-bar">
         <div>
             <h2>FPC Statistics</h2>
-            <p class="fpc-subtitle"><?php echo $this->escapeHtml($periodLabel); ?></p>
+            <p class="fpc-subtitle">
+                <?php echo $this->escapeHtml($periodLabel); ?>
+                <?php if ($storeFilter !== ''): ?>
+                    &mdash; Store: <strong><?php echo $this->escapeHtml($storeFilter); ?></strong>
+                <?php endif; ?>
+            </p>
         </div>
-        <div class="fpc-period-btns">
-            <?php foreach ($periodOpts as $opt): ?>
-                <a href="<?php echo $this->getPeriodUrl($opt['hours']); ?>"
-                   class="fpc-period-btn <?php echo $opt['active'] ? 'active' : ''; ?>">
-                    <?php echo $this->escapeHtml($opt['label']); ?>
-                </a>
-            <?php endforeach; ?>
+        <div class="fpc-controls">
+            <?php if (count($storeOpts) > 2): ?>
+                <select class="fpc-store-select" onchange="window.location.href=this.value;">
+                    <?php foreach ($storeOpts as $opt): ?>
+                        <option value="<?php echo $this->getStoreUrl($opt['code']); ?>"
+                                <?php echo $opt['active'] ? 'selected' : ''; ?>>
+                            <?php echo $this->escapeHtml($opt['label']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            <?php endif; ?>
+            <div class="fpc-period-btns">
+                <?php foreach ($periodOpts as $opt): ?>
+                    <a href="<?php echo $this->getPeriodUrl($opt['hours']); ?>"
+                       class="fpc-period-btn <?php echo $opt['active'] ? 'active' : ''; ?>">
+                        <?php echo $this->escapeHtml($opt['label']); ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
 
@@ -175,6 +253,9 @@ if ($niceMax < 1) {
         </div>
     </div>
 
+    <!-- Charts: side by side -->
+    <div class="fpc-grid-2">
+
     <!-- Chart: Hit/Miss Over Time -->
     <div class="fpc-section">
         <h3 class="fpc-section-title">Hits vs Misses Over Time</h3>
@@ -183,8 +264,8 @@ if ($niceMax < 1) {
             <span class="fpc-legend-item"><span class="fpc-legend-dot" style="background:#ef4444;"></span> Misses</span>
         </div>
         <?php if ($barCount > 0 && $maxVal > 0): ?>
-            <div style="overflow-x:auto;">
-                <svg width="<?php echo $chartW; ?>" height="<?php echo $chartH; ?>" viewBox="0 0 <?php echo $chartW; ?> <?php echo $chartH; ?>" style="display:block;max-width:100%;">
+            <div class="fpc-chart-wrap" style="overflow-x:auto;">
+                <svg viewBox="0 0 <?php echo $chartW; ?> <?php echo $chartH; ?>" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto;">
                     <!-- Y-axis gridlines -->
                     <?php for ($g = 0; $g <= 4; $g++): ?>
                         <?php
@@ -216,17 +297,23 @@ if ($niceMax < 1) {
                         <?php if ($missH > 0): ?>
                             <rect x="<?php echo $x; ?>" y="<?php echo $barBase - $missH; ?>"
                                   width="<?php echo $barW; ?>" height="<?php echo $missH; ?>"
-                                  fill="#ef4444" rx="1">
-                                <title><?php echo $this->escapeHtml($bucket['hour']); ?> - Misses: <?php echo $bucket['misses']; ?></title>
-                            </rect>
+                                  fill="#ef4444" rx="1"
+                                  data-fpc-tip="1"
+                                  data-fpc-time="<?php echo $this->escapeHtml($bucket['hour']); ?>"
+                                  data-fpc-label="Misses"
+                                  data-fpc-value="<?php echo $bucket['misses']; ?>"
+                                  data-fpc-color="#ef4444" />
                         <?php endif; ?>
                         <!-- Hit bar (stacked on top) -->
                         <?php if ($hitsH > 0): ?>
                             <rect x="<?php echo $x; ?>" y="<?php echo $barBase - $totalH; ?>"
                                   width="<?php echo $barW; ?>" height="<?php echo $hitsH; ?>"
-                                  fill="#10b981" rx="1">
-                                <title><?php echo $this->escapeHtml($bucket['hour']); ?> - Hits: <?php echo $bucket['hits']; ?></title>
-                            </rect>
+                                  fill="#10b981" rx="1"
+                                  data-fpc-tip="1"
+                                  data-fpc-time="<?php echo $this->escapeHtml($bucket['hour']); ?>"
+                                  data-fpc-label="Hits"
+                                  data-fpc-value="<?php echo $bucket['hits']; ?>"
+                                  data-fpc-color="#10b981" />
                         <?php endif; ?>
                         <!-- X-axis label (show every Nth) -->
                         <?php
@@ -249,6 +336,110 @@ if ($niceMax < 1) {
             <div class="fpc-empty">No data available for this period.</div>
         <?php endif; ?>
     </div>
+
+    <!-- Chart: TTFB Over Time -->
+    <div class="fpc-section">
+        <h3 class="fpc-section-title">TTFB Over Time</h3>
+        <div class="fpc-chart-legend">
+            <span class="fpc-legend-item"><span class="fpc-legend-dot" style="background:#3b82f6;"></span> Avg TTFB</span>
+            <span class="fpc-legend-item"><span class="fpc-legend-dot" style="background:#f59e0b;"></span> P95 TTFB</span>
+        </div>
+        <?php
+        $hasTtfbData = false;
+        foreach ($hourlyTtfb as $t) {
+            if ($t['avg_ttfb'] > 0) {
+                $hasTtfbData = true;
+                break;
+            }
+        }
+        ?>
+        <?php if ($ttfbCount > 0 && $hasTtfbData): ?>
+            <div class="fpc-chart-wrap" style="overflow-x:auto;">
+                <svg viewBox="0 0 <?php echo $chartW; ?> <?php echo $chartH; ?>" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto;">
+                    <!-- Y-axis gridlines -->
+                    <?php for ($g = 0; $g <= 4; $g++): ?>
+                        <?php
+                        $yVal = ($niceTtfbMax / 4) * $g;
+                        $yPos = $chartPadT + $plotH - ($plotH * ($yVal / $niceTtfbMax));
+                        ?>
+                        <line x1="<?php echo $chartPadL; ?>" y1="<?php echo $yPos; ?>"
+                              x2="<?php echo $chartW - $chartPadR; ?>" y2="<?php echo $yPos; ?>"
+                              stroke="#e5e7eb" stroke-width="1" />
+                        <text x="<?php echo $chartPadL - 8; ?>" y="<?php echo $yPos + 4; ?>"
+                              text-anchor="end" font-size="11" fill="#9ca3af">
+                            <?php echo number_format($yVal, 0); ?>ms
+                        </text>
+                    <?php endfor; ?>
+
+                    <!-- P95 TTFB line (draw first so avg line is on top) -->
+                    <?php
+                    $stepW = $plotW / max(1, $ttfbCount - 1);
+                    $p95Points = [];
+                    $avgPoints = [];
+                    foreach ($hourlyTtfb as $i => $bucket):
+                        $x = $chartPadL + ($i * $stepW);
+                        if ($bucket['p95_ttfb'] > 0) {
+                            $y = $chartPadT + $plotH - (($bucket['p95_ttfb'] / $niceTtfbMax) * $plotH);
+                            $p95Points[] = round($x, 1) . ',' . round($y, 1);
+                        }
+                        if ($bucket['avg_ttfb'] > 0) {
+                            $y = $chartPadT + $plotH - (($bucket['avg_ttfb'] / $niceTtfbMax) * $plotH);
+                            $avgPoints[] = round($x, 1) . ',' . round($y, 1);
+                        }
+                    endforeach;
+                    ?>
+
+                    <?php if (count($p95Points) > 1): ?>
+                        <polyline points="<?php echo implode(' ', $p95Points); ?>"
+                                  fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7" />
+                    <?php endif; ?>
+
+                    <?php if (count($avgPoints) > 1): ?>
+                        <polyline points="<?php echo implode(' ', $avgPoints); ?>"
+                                  fill="none" stroke="#3b82f6" stroke-width="2" />
+                    <?php endif; ?>
+
+                    <!-- Data point dots + tooltips for avg -->
+                    <?php foreach ($hourlyTtfb as $i => $bucket):
+                        if ($bucket['avg_ttfb'] <= 0) continue;
+                        $x = $chartPadL + ($i * $stepW);
+                        $y = $chartPadT + $plotH - (($bucket['avg_ttfb'] / $niceTtfbMax) * $plotH);
+                    ?>
+                        <circle cx="<?php echo round($x, 1); ?>" cy="<?php echo round($y, 1); ?>"
+                                r="6" fill="#3b82f6" opacity="0.8"
+                                data-fpc-tip="1"
+                                data-fpc-time="<?php echo $this->escapeHtml($bucket['hour']); ?>"
+                                data-fpc-label="Avg"
+                                data-fpc-value="<?php echo round($bucket['avg_ttfb']); ?>ms"
+                                data-fpc-extra-label="P95"
+                                data-fpc-extra-value="<?php echo $bucket['p95_ttfb']; ?>ms"
+                                data-fpc-color="#3b82f6" />
+                    <?php endforeach; ?>
+
+                    <!-- X-axis labels -->
+                    <?php
+                    $labelInterval = max(1, (int) floor($ttfbCount / 8));
+                    foreach ($hourlyTtfb as $i => $bucket):
+                        if ($i % $labelInterval !== 0) continue;
+                        $x = $chartPadL + ($i * $stepW);
+                        $label = substr($bucket['hour'], 11, 5);
+                        if ($periodHours >= 168) {
+                            $label = substr($bucket['hour'], 5, 5);
+                        }
+                    ?>
+                        <text x="<?php echo round($x, 1); ?>" y="<?php echo $chartH - 8; ?>"
+                              text-anchor="middle" font-size="10" fill="#9ca3af">
+                            <?php echo $this->escapeHtml($label); ?>
+                        </text>
+                    <?php endforeach; ?>
+                </svg>
+            </div>
+        <?php else: ?>
+            <div class="fpc-empty">No TTFB data available for this period.</div>
+        <?php endif; ?>
+    </div>
+
+    </div><!-- /fpc-grid-2 charts -->
 
     <!-- Tables: Top Missed URLs + Recent Flushes -->
     <div class="fpc-grid-2">
@@ -303,3 +494,61 @@ if ($niceMax < 1) {
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    'use strict';
+
+    // Create a single tooltip element and append to body
+    var tooltip = document.createElement('div');
+    tooltip.className = 'fpc-tooltip';
+    document.body.appendChild(tooltip);
+
+    function buildTooltipHtml(el) {
+        var time = el.getAttribute('data-fpc-time') || '';
+        var label = el.getAttribute('data-fpc-label') || '';
+        var value = el.getAttribute('data-fpc-value') || '';
+        var extraLabel = el.getAttribute('data-fpc-extra-label') || '';
+        var extraValue = el.getAttribute('data-fpc-extra-value') || '';
+        var color = el.getAttribute('data-fpc-color') || '#3b82f6';
+
+        var html = '<div class="fpc-tooltip-time">' + time + '</div>';
+        html += '<div><span class="fpc-tooltip-label" style="color:' + color + '">' + label + ':</span><strong>' + value + '</strong></div>';
+        if (extraLabel) {
+            html += '<div><span class="fpc-tooltip-label">' + extraLabel + ':</span><strong>' + extraValue + '</strong></div>';
+        }
+        return html;
+    }
+
+    function positionTooltip(evt) {
+        // Position above cursor (viewport-relative since tooltip is position:fixed)
+        tooltip.style.left = evt.clientX + 'px';
+        tooltip.style.top = evt.clientY + 'px';
+    }
+
+    // Delegate from .fpc-dash container
+    var dash = document.querySelector('.fpc-dash');
+    if (!dash) return;
+
+    dash.addEventListener('mouseover', function(e) {
+        var target = e.target.closest('[data-fpc-tip]');
+        if (!target) return;
+        tooltip.innerHTML = buildTooltipHtml(target);
+        tooltip.classList.add('visible');
+        positionTooltip(e);
+    });
+
+    dash.addEventListener('mousemove', function(e) {
+        if (!tooltip.classList.contains('visible')) return;
+        positionTooltip(e);
+    });
+
+    dash.addEventListener('mouseout', function(e) {
+        var target = e.target.closest('[data-fpc-tip]');
+        if (!target) return;
+        // If moving to a child, don't hide
+        if (target.contains(e.relatedTarget)) return;
+        tooltip.classList.remove('visible');
+    });
+})();
+</script>

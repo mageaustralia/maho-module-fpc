@@ -26,7 +26,7 @@ class Mageaustralia_Fpc_Model_Ajax_Observer
      *
      * Event: controller_action_postdispatch
      */
-    public function onPostdispatch(Varien_Event_Observer $observer): void
+    public function onPostdispatch(Maho\Event\Observer $observer): void
     {
         $action = $observer->getEvent()->getControllerAction();
         if (!$action) {

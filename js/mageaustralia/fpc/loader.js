@@ -6,9 +6,41 @@
  *
  * Loads dynamic content (cart count, account links, messages, etc.) via AJAX
  * on every page view — both initial load and Turbo navigations.
+ *
+ * Configuration (two methods, both work — admin config takes zero template changes):
+ *
+ * 1. Admin config (System > Config > FPC > Turbo Drive):
+ *    Cart Qty Selector:        e.g. ".skip-cart .count, .cart-toggle .badge"
+ *    Minicart Trigger Selector: e.g. ".skip-cart"
+ *    Minicart Content Selector: e.g. ".block-cart .block-content"
+ *    → Output as window.FPC_CONFIG by Block/Config.php
+ *
+ * 2. Data attributes (optional override, useful for headless/custom themes):
+ *    [data-fpc-block="name"]          — placeholder replaced with block HTML
+ *    [data-cart-count]                — badge updated with cart count (hidden when 0)
+ *    [data-compare-count]             — badge for compare count
+ *    [data-wishlist-count]            — badge for wishlist count
+ *    [data-fpc-compare]               — element hidden/shown based on compare count
+ *    [data-fpc-cart-qty]              — textContent set to cart qty
+ *
+ * Custom events dispatched:
+ *    fpc:dynamic:loaded  — after blocks loaded (detail = full AJAX response)
  */
 (function () {
     'use strict';
+
+    var cfg = window.FPC_CONFIG || {};
+
+    // Measure Turbo navigation time directly.
+    // turbo:visit fires when navigation starts, turbo:load when it completes.
+    // This is more reliable than querying the resource timing buffer which
+    // can contain stale entries across multiple navigations.
+    var _navStart = 0;
+    var _navDuration = 0;
+
+    document.addEventListener('turbo:visit', function() {
+        _navStart = performance.now();
+    });
 
     function loadDynamicBlocks() {
         var placeholders = document.querySelectorAll('[data-fpc-block]');
@@ -37,36 +69,39 @@
 
         // Always fetch — even with no blocks, we need a fresh form_key
         var query = names.length > 0 ? '?blocks=' + encodeURIComponent(names.join(',')) : '';
-        // For Turbo navigations, use the fetch resource timing instead of stale navigation entry
+
+        // Get page load metric.
+        // Turbo navigations: use the measured duration from turbo:visit → turbo:load.
+        // Initial page load: use navigation timing API.
         var ttfb = 0, loadTime = 0;
-        var resources = performance.getEntriesByType("resource");
-        // Find the most recent fetch for current page URL (Turbo navigation)
-        for (var ri = resources.length - 1; ri >= 0; ri--) {
-            if (resources[ri].name.indexOf(window.location.pathname) > -1 
-                && resources[ri].initiatorType === "fetch"
-                && (performance.now() - resources[ri].startTime) < 5000) {
-                ttfb = Math.round(resources[ri].responseStart - resources[ri].requestStart);
-                loadTime = Math.round(resources[ri].responseEnd - resources[ri].startTime);
-                break;
-            }
-        }
-        // Fallback to navigation timing for initial page load
-        if (ttfb === 0) {
+
+        if (_navDuration > 0) {
+            // Turbo navigation — direct measurement
+            ttfb = _navDuration;
+            loadTime = _navDuration;
+            _navDuration = 0; // consume — next navigation starts fresh
+        } else {
+            // Fresh page load (SEO, direct URL, back/forward without Turbo).
+            // At DOMContentLoaded time, responseEnd is set (HTML body finished
+            // downloading) but loadEventEnd/domComplete are not yet set.
+            // Use responseEnd - startTime as the fetch duration.
             var nav = performance.getEntriesByType("navigation")[0];
-            if (nav) {
-                ttfb = Math.round(nav.responseStart - nav.requestStart);
-                loadTime = Math.round(nav.loadEventEnd > 0 ? nav.loadEventEnd - nav.startTime : nav.domComplete - nav.startTime);
+            if (nav && nav.responseEnd > 0) {
+                loadTime = Math.round(nav.responseEnd - nav.startTime);
+                // True server TTFB for initial loads (actually meaningful here
+                // since there's no Turbo layer — matches what browsers report)
+                ttfb = nav.responseStart > 0
+                    ? Math.round(nav.responseStart - nav.startTime)
+                    : loadTime;
             }
         }
-        query += (query ? "&" : "?") + "p=" + encodeURIComponent(window.location.pathname) + "&ttfb=" + ttfb + "&lt=" + loadTime;
+        query += (query ? "&" : "?") + "p=" + encodeURIComponent(pathname) + "&ttfb=" + ttfb + "&lt=" + loadTime;
 
-        fetch('/fpc/dynamic/' + query, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function(r) { return r.json(); })
+        mahoFetch('/fpc/dynamic/' + query, { loaderArea: false })
         .then(function(data) {
-            if (!data.success || !data.blocks) return;
+            if (!data || !data.success || !data.blocks) return;
 
+            // Replace [data-fpc-block] placeholders with block HTML
             var currentPlaceholders = document.querySelectorAll('[data-fpc-block]');
             for (var j = 0; j < currentPlaceholders.length; j++) {
                 var blockName = currentPlaceholders[j].getAttribute('data-fpc-block');
@@ -75,88 +110,51 @@
                 }
             }
 
-            // Update DaisyUI theme badges
-            updateBadge('[data-cart-count]', data.blocks.cart_count || '0');
-            updateBadge('[data-compare-count]', data.blocks.compare_count || '0');
-            updateBadge('[data-wishlist-count]', data.blocks.wishlist_count || '0');
+            // Update count badges (data-attribute driven)
+            updateBadge('[data-cart-count]', data.blocks.cart_count || data.cart_qty || '0');
+            updateBadge('[data-compare-count]', data.blocks.compare_count || data.compare_count || '0');
+            updateBadge('[data-wishlist-count]', data.blocks.wishlist_count || data.wishlist_count || '0');
 
+            // Show/hide compare link
             var compareLink = document.querySelector('[data-fpc-compare]');
             if (compareLink) {
-                var compareCount = parseInt(data.blocks.compare_count || '0', 10);
+                var compareCount = parseInt(data.blocks.compare_count || data.compare_count || '0', 10);
                 compareLink.style.cssText = compareCount > 0 ? '' : 'display:none !important';
             }
 
-            // Update base Maho theme cart count (.skip-cart .count)
-            var baseCount = document.querySelector('.skip-cart .count');
-            if (baseCount) {
-                var qty = data.cart_qty || 0;
-                baseCount.textContent = String(qty);
-                baseCount.className = 'count' + (qty === 0 ? ' count-0' : '');
+            // Update cart qty elements — from admin config selector OR data attribute
+            var cartQty = data.cart_qty || 0;
+            var qtySelector = cfg.cartQtySelector || '[data-fpc-cart-qty]';
+            var cartQtyEls = document.querySelectorAll(qtySelector);
+            for (var q = 0; q < cartQtyEls.length; q++) {
+                cartQtyEls[q].textContent = String(cartQty);
             }
 
-            // Update TW theme cart badge (.cart-toggle .badge)
-            var twBadge = document.querySelector('.cart-toggle .badge');
-            if (twBadge) {
-                var cartQty = parseInt(data.cart_qty, 10) || 0;
-                twBadge.textContent = cartQty > 0 ? String(cartQty) : '';
-            }
+            // Bind minicart AJAX refresh — from admin config selectors OR data attributes
+            var triggerSel = cfg.minicartTrigger;
+            var contentSel = cfg.minicartContent;
 
-            // Fetch fresh minicart on cart dropdown open
-            var minicartTriggerSel = document.querySelector('[data-fpc-minicart-trigger]')
-                ? document.querySelector('[data-fpc-minicart-trigger]').getAttribute('data-fpc-minicart-trigger')
-                : '.twa-header__cart-summary-wrapper';
-            var minicartContentSel = document.querySelector('[data-fpc-minicart-content]')
-                ? document.querySelector('[data-fpc-minicart-content]').getAttribute('data-fpc-minicart-content')
-                : '.header-cart-wrapper .block-cart .block-content';
-            var cartWrapper = document.querySelector(minicartTriggerSel);
-            if (cartWrapper && !cartWrapper._fpcMinicartBound) {
-                cartWrapper._fpcMinicartBound = true;
-                cartWrapper.addEventListener('click', function(e) {
-                    var blockContent = document.querySelector(minicartContentSel);
-                    if (!blockContent) return;
-                    fetch('/fpc/dynamic/minicart/', {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                    })
-                    .then(function(r) { return r.text(); })
-                    .then(function(html) {
-                        if (html && html.trim()) {
-                            blockContent.innerHTML = html;
-                        }
-                    })
-                    .catch(function() {});
-                });
-            }
+            // Data-attribute override
+            var triggerAttr = document.querySelector('[data-fpc-minicart-trigger]');
+            var contentAttr = document.querySelector('[data-fpc-minicart-content]');
+            if (triggerAttr) triggerSel = triggerAttr.getAttribute('data-fpc-minicart-trigger');
+            if (contentAttr) contentSel = contentAttr.getAttribute('data-fpc-minicart-content');
 
-            // Update TW theme cart sidebar from dynamic data
-            var cartBlock = document.querySelector('.header-cart-wrapper .block-cart .block-content');
-            if (cartBlock && typeof data.cart_qty !== 'undefined') {
-                var items = data.cart_items || [];
-                if (items.length === 0) {
-                    cartBlock.innerHTML = '<p class="empty">Your cart is empty.</p>';
-                } else {
-                    var html = '<ol id="cart-sidebar" class="mini-products-list">';
-                    items.forEach(function(item) {
-                        html += '<li class="item">';
-                        html += '<a href="' + item.product_url + '" title="' + item.name + '" class="product-image">';
-                        html += '<img src="' + item.image_url + '" width="50" height="50" alt="' + item.name + '"></a>';
-                        html += '<div class="product-details">';
-                        html += '<p class="product-name"><a href="' + item.product_url + '">' + item.name + '</a></p>';
-                        if (item.options && item.options.length) {
-                            item.options.forEach(function(opt) {
-                                html += '<span class="item-option"><strong>' + opt.label + ':</strong> ' + opt.value + '</span><br>';
-                            });
-                        }
-                        html += '<strong>' + item.qty + '</strong> x <span class="price">' + item.price + '</span>';
-                        html += '</div></li>';
+            if (triggerSel && contentSel) {
+                var cartWrapper = document.querySelector(triggerSel);
+                if (cartWrapper && !cartWrapper._fpcMinicartBound) {
+                    cartWrapper._fpcMinicartBound = true;
+                    cartWrapper.addEventListener('click', function() {
+                        var blockContent = document.querySelector(contentSel);
+                        if (!blockContent) return;
+                        mahoFetch('/fpc/dynamic/minicart/', { loaderArea: false })
+                        .then(function(html) {
+                            if (html && html.trim()) {
+                                blockContent.innerHTML = html;
+                            }
+                        })
+                        .catch(function() {});
                     });
-                    html += '</ol>';
-                    html += '<div class="summary"><p class="subtotal"><span>Subtotal:</span> ';
-                    html += '<span class="total"><span class="price">' + data.cart_subtotal + '</span></span></p></div>';
-                    html += '<div class="actions clearfix">';
-                    html += '<button type="button" title="Cart" class="twa-button" onclick="window.location.href=\'' + data.cart_url + '\'">View Cart</button>';
-                    html += '<button type="button" title="Checkout" class="twa-button twa-button--green" onclick="window.location.href=\'' + data.checkout_url + '\'">Checkout</button>';
-                    html += '</div>';
-                    cartBlock.innerHTML = html;
                 }
             }
 
@@ -168,24 +166,16 @@
                 }
                 window._fpcFormKeyReady = true;
 
-                // Update form_key in form action URLs (Maho embeds form_key in URL path)
                 document.querySelectorAll('form[action*="/form_key/"]').forEach(function(form) {
                     form.action = form.action.replace(/\/form_key\/[^\/]+\//, '/form_key/' + data.form_key + '/');
                 });
-                // Also update any links with form_key in the path
                 document.querySelectorAll('a[href*="/form_key/"]').forEach(function(a) {
                     a.href = a.href.replace(/\/form_key\/[^\/]+\//, '/form_key/' + data.form_key + '/');
                 });
-                // Also update inline form_key references in onclick handlers
-                if (typeof Mage !== 'undefined' && Mage.Cookies) {
-                    // Maho stores form_key in cookie too
-                }
             }
 
-            // Re-init minicart if it exists (base theme)
-            if (typeof window.minicart !== 'undefined' && data.form_key) {
-                window.minicart.formKey = data.form_key;
-            }
+            // Dispatch custom event so themes can hook in for additional updates
+            document.dispatchEvent(new CustomEvent('fpc:dynamic:loaded', { detail: data }));
         })
         .catch(function() {});
     }
@@ -213,15 +203,15 @@
     // Turbo navigation — fires on every page (initial + navigations)
     document.addEventListener('turbo:load', function() {
         initialLoaded = true;
+        if (_navStart > 0) {
+            _navDuration = Math.round(performance.now() - _navStart);
+            _navStart = 0;
+        }
         loadDynamicBlocks();
     });
 
     // Fallback for non-Turbo (or if Turbo hasn't loaded yet on initial page)
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            if (!initialLoaded) loadDynamicBlocks();
-        });
-    } else if (!initialLoaded) {
-        loadDynamicBlocks();
-    }
+    mahoOnReady(function() {
+        if (!initialLoaded) loadDynamicBlocks();
+    });
 })();

@@ -38,7 +38,7 @@ class Mageaustralia_Fpc_Model_Observer
      * 4. Write processed HTML to var/fpc/{store}/{hash}.html + .html.gz
      * 5. Set CDN headers (Cache-Control, X-Fpc)
      */
-    public function saveCache(Varien_Event_Observer $observer): void
+    public function saveCache(Maho\Event\Observer $observer): void
     {
         $helper = $this->getHelper();
 
@@ -114,10 +114,13 @@ class Mageaustralia_Fpc_Model_Observer
             $response->setHeader('X-FPC-Age', '0', true);
         }
 
-        // Log miss — this page was not cached, we just wrote it
+        // Log miss — this page was not cached, we just wrote it.
+        // Skip stat logging for warmer requests so they don't skew hit rate.
         $urlPath = trim($request->getOriginalPathInfo() ?: $request->getPathInfo(), '/');
-        $this->logStat('miss', $urlPath);
-        $this->flushStatsBatch();
+        if (!$this->isWarmerRequest($request)) {
+            $this->logStat('miss', $urlPath);
+            $this->flushStatsBatch();
+        }
     }
 
     // ── Cache Hit ───────────────────────────────────────────────────
@@ -130,7 +133,7 @@ class Mageaustralia_Fpc_Model_Observer
      * If a cached file exists, serve it directly and set the X-Fpc: HIT header.
      * This is the PHP fallback — nginx try_files handles most hits without PHP.
      */
-    public function checkCache(Varien_Event_Observer $observer): void
+    public function checkCache(Maho\Event\Observer $observer): void
     {
         $helper = $this->getHelper();
 
@@ -205,7 +208,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: catalog_product_save_after
      */
-    public function onProductSave(Varien_Event_Observer $observer): void
+    public function onProductSave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -235,7 +238,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: catalog_category_save_after
      */
-    public function onCategorySave(Varien_Event_Observer $observer): void
+    public function onCategorySave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -260,7 +263,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: cms_page_save_after
      */
-    public function onCmsPageSave(Varien_Event_Observer $observer): void
+    public function onCmsPageSave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -298,7 +301,7 @@ class Mageaustralia_Fpc_Model_Observer
      * CMS blocks can appear on any page, so we flush everything.
      * This is conservative but correct — blocks don't carry page context.
      */
-    public function onCmsBlockSave(Varien_Event_Observer $observer): void
+    public function onCmsBlockSave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -322,7 +325,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: maho_blog_post_save_after
      */
-    public function onBlogPostSave(Varien_Event_Observer $observer): void
+    public function onBlogPostSave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -376,7 +379,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: cataloginventory_stock_item_save_after
      */
-    public function onStockSave(Varien_Event_Observer $observer): void
+    public function onStockSave(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -416,7 +419,7 @@ class Mageaustralia_Fpc_Model_Observer
      * If specific tags are flushed that relate to catalog/CMS, flush FPC.
      * If no tags (full flush), flush everything.
      */
-    public function onCleanCache(Varien_Event_Observer $observer): void
+    public function onCleanCache(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -459,7 +462,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: controller_action_postdispatch
      */
-    public function onRefreshAction(Varien_Event_Observer $observer): void
+    public function onRefreshAction(Maho\Event\Observer $observer): void
     {
         if (!$this->getHelper()->isEnabled()) {
             return;
@@ -492,7 +495,7 @@ class Mageaustralia_Fpc_Model_Observer
      *
      * Event: admin_system_config_changed_section_mageaustralia_fpc
      */
-    public function onFpcConfigChanged(Varien_Event_Observer $observer): void
+    public function onFpcConfigChanged(Maho\Event\Observer $observer): void
     {
         // Flush FPC when config changes — cached pages may reflect old settings
         $this->getCache()->flush();
@@ -752,7 +755,7 @@ class Mageaustralia_Fpc_Model_Observer
 
         $this->statsBatch[] = [
             'event_type'   => $eventType,
-            'url_path'     => substr($urlPath, 0, 500),
+            'url_path'     => substr(ltrim($urlPath, '/'), 0, 500),
             'ttfb_ms'      => $ttfbMs,
             'flush_reason' => $flushReason !== null ? substr($flushReason, 0, 255) : null,
             'store_code'   => $storeCode,
@@ -788,6 +791,43 @@ class Mageaustralia_Fpc_Model_Observer
     }
 
     /**
+     * Cron: aggregate raw stats into hourly rollup table (runs every hour at :05).
+     */
+    public function rollupHourlyStats(): void
+    {
+        if (!Mage::getStoreConfigFlag('system/fpc/stats_enabled')) {
+            return;
+        }
+
+        try {
+            $helper = $this->getHelper();
+            $count = $helper->rollupHourlyStats();
+            if ($count > 0) {
+                Mage::log("FPC: hourly rollup processed {$count} buckets", 6);
+            }
+        } catch (\Throwable $e) {
+            Mage::log('FPC rollup error: ' . $e->getMessage(), 3);
+        }
+    }
+
+    /**
+     * Cron: run scheduled warmup (independent of flush).
+     *
+     * Uses cron expression from system/fpc/warmup_schedule config.
+     */
+    public function processScheduledWarmup(): void
+    {
+        if (!Mage::getStoreConfigFlag('system/fpc/warmup_enabled')) {
+            return;
+        }
+
+        /** @var Mageaustralia_Fpc_Model_Warmup $warmup */
+        $warmup = Mage::getModel('mageaustralia_fpc/warmup');
+        $warmup->scheduleIfStale();
+        $warmup->runBatch();
+    }
+
+    /**
      * Cron: delete stats older than configured retention period.
      *
      * Runs daily at 3am (configured in config.xml).
@@ -810,6 +850,22 @@ class Mageaustralia_Fpc_Model_Observer
         } catch (\Throwable $e) {
             Mage::log('FPC stats cleanup error: ' . $e->getMessage(), 3);
         }
+
+        // Also clean old rollup data
+        $this->getHelper()->cleanOldRollupStats();
+    }
+
+    /**
+     * Detect whether the current request is from the FPC cache warmer.
+     *
+     * The warmer identifies itself via User-Agent. We skip stat logging for
+     * warmer requests so that warming a sitemap doesn't count as thousands
+     * of cache misses.
+     */
+    private function isWarmerRequest(Mage_Core_Controller_Request_Http $request): bool
+    {
+        $ua = (string) $request->getServer('HTTP_USER_AGENT', '');
+        return str_starts_with($ua, 'MahoFPC-Warmup/');
     }
 
     // ── Lazy Accessors ──────────────────────────────────────────────

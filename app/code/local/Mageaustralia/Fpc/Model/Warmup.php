@@ -32,6 +32,59 @@ class Mageaustralia_Fpc_Model_Warmup
     }
 
     /**
+     * Schedule a warmup if no warmup is already pending.
+     *
+     * Used by the scheduled warmup cron — only triggers if
+     * no warmup is already in progress.
+     */
+    public function scheduleIfStale(): void
+    {
+        if ($this->isPending()) {
+            return;
+        }
+
+        // Check if any cache files are older than half the cache lifetime
+        $helper = Mage::helper('mageaustralia_fpc');
+        $fpcDir = $helper->getFpcDir();
+        if (!is_dir($fpcDir)) {
+            $this->schedule();
+            return;
+        }
+
+        $lifetime = $helper->getCacheLifetime();
+        $threshold = time() - (int) ($lifetime * 0.5);
+
+        // Sample a few files — if any are stale, schedule warmup
+        $count = 0;
+        $stale = 0;
+        $items = new \DirectoryIterator($fpcDir);
+        foreach ($items as $item) {
+            if ($item->isDot() || !$item->isDir()) {
+                continue;
+            }
+            // Check first HTML file in each store directory
+            $storeDir = new \DirectoryIterator($item->getPathname());
+            foreach ($storeDir as $file) {
+                if ($file->isFile() && str_ends_with($file->getFilename(), '.html')) {
+                    $count++;
+                    if ($file->getMTime() < $threshold) {
+                        $stale++;
+                    }
+                    break;
+                }
+            }
+            if ($count >= 5) {
+                break;
+            }
+        }
+
+        // If more than half the sampled files are stale, schedule warmup
+        if ($count === 0 || ($stale / $count) >= 0.5) {
+            $this->schedule();
+        }
+    }
+
+    /**
      * Request a cache warmup (called after flush).
      */
     public function schedule(): void
@@ -195,40 +248,39 @@ class Mageaustralia_Fpc_Model_Warmup
     }
 
     /**
-     * Warm a single URL via curl GET request.
+     * Warm a single URL via HTTP GET request using Symfony HttpClient.
      */
     private function warmUrl(string $url, ?string $basicAuth): bool
     {
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_NOBODY => false,
-            CURLOPT_USERAGENT => 'MahoFPC-Warmup/1.0',
-            CURLOPT_ENCODING => 'gzip',
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
+        try {
+            $options = [
+                'timeout' => 30,
+                'max_redirects' => 5,
+                'headers' => [
+                    'User-Agent' => 'MahoFPC-Warmup/1.0',
+                    'Accept-Encoding' => 'gzip',
+                ],
+            ];
 
-        if ($basicAuth !== null) {
-            curl_setopt($ch, CURLOPT_USERPWD, $basicAuth);
-        }
-
-        curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode !== 200) {
-            if ($error) {
-                $this->log(sprintf('FAIL %d %s — %s', $httpCode, $url, $error));
+            if ($basicAuth !== null) {
+                [$user, $pass] = explode(':', $basicAuth, 2) + [1 => ''];
+                $options['auth_basic'] = [$user, $pass];
             }
+
+            $client = \Symfony\Component\HttpClient\HttpClient::create($options);
+            $response = $client->request('GET', $url);
+            $httpCode = $response->getStatusCode();
+
+            if ($httpCode !== 200) {
+                $this->log(sprintf('FAIL %d %s', $httpCode, $url));
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->log(sprintf('FAIL %s — %s', $url, $e->getMessage()));
             return false;
         }
-
-        return true;
     }
 
     /**
