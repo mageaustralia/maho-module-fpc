@@ -11,6 +11,8 @@ declare(strict_types=1);
 
 class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Controller_Action
 {
+    public const ADMIN_RESOURCE = 'mageaustralia/fpc_stats';
+
     public function indexAction(): void
     {
         $this->loadLayout();
@@ -21,6 +23,6 @@ class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Cont
     protected function _isAllowed(): bool
     {
         return Mage::getSingleton('admin/session')
-            ->isAllowed('mageaustralia/fpc_stats');
+            ->isAllowed(self::ADMIN_RESOURCE);
     }
 }
