@@ -13,7 +13,8 @@ declare(strict_types=1);
  * FPC Statistics Dashboard block.
  *
  * Prepares all data needed by the dashboard template: stat cards,
- * hourly chart data, top missed URLs, and recent flushes.
+ * hourly chart data, TTFB timeline, top missed URLs, recent flushes,
+ * and store view filtering.
  */
 class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_Block_Template
 {
@@ -68,29 +69,83 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
     }
 
     /**
-     * Get the URL for a time period link.
+     * Get the URL for a time period link, preserving store filter.
      */
     public function getPeriodUrl(int $hours): string
     {
-        return $this->getUrl('*/*/index', ['period' => $hours]);
+        $params = ['period' => $hours];
+        $store = $this->getStoreFilter();
+        if ($store !== '') {
+            $params['store'] = $store;
+        }
+        return $this->getUrl('*/*/index', $params);
     }
+
+    // ── Store View Filter ──────────────────────────────────────────
+
+    /**
+     * Get the currently selected store code filter (empty = all stores).
+     */
+    public function getStoreFilter(): string
+    {
+        return trim((string) $this->getRequest()->getParam('store', ''));
+    }
+
+    /**
+     * Get available store options for the dropdown.
+     *
+     * @return array<int, array{code: string, label: string, active: bool}>
+     */
+    public function getStoreOptions(): array
+    {
+        $current = $this->getStoreFilter();
+        $codes = $this->getFpcHelper()->getAvailableStoreCodes();
+
+        $options = [
+            ['code' => '', 'label' => 'All Stores', 'active' => $current === ''],
+        ];
+
+        foreach ($codes as $code) {
+            $options[] = [
+                'code'   => $code,
+                'label'  => $code,
+                'active' => $current === $code,
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Get the URL for a store filter selection, preserving period.
+     */
+    public function getStoreUrl(string $storeCode): string
+    {
+        $params = ['period' => $this->getPeriodHours()];
+        if ($storeCode !== '') {
+            $params['store'] = $storeCode;
+        }
+        return $this->getUrl('*/*/index', $params);
+    }
+
+    // ── Data Methods ───────────────────────────────────────────────
 
     /**
      * @return array{hits: int, misses: int, total: int, rate: float}
      */
     public function getHitRate(): array
     {
-        return $this->getFpcHelper()->getHitRate($this->getPeriodHours());
+        return $this->getFpcHelper()->getHitRate($this->getPeriodHours(), $this->getStoreFilter());
     }
 
     public function getFlushCount(): int
     {
-        return $this->getFpcHelper()->getFlushCount($this->getPeriodHours());
+        return $this->getFpcHelper()->getFlushCount($this->getPeriodHours(), $this->getStoreFilter());
     }
 
     public function getAverageTtfb(): float
     {
-        return $this->getFpcHelper()->getAverageTtfb($this->getPeriodHours());
+        return $this->getFpcHelper()->getAverageTtfb($this->getPeriodHours(), $this->getStoreFilter());
     }
 
     /**
@@ -98,7 +153,7 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getTopMissedUrls(): array
     {
-        return $this->getFpcHelper()->getTopMissedUrls(10, $this->getPeriodHours());
+        return $this->getFpcHelper()->getTopMissedUrls(10, $this->getPeriodHours(), $this->getStoreFilter());
     }
 
     /**
@@ -106,7 +161,7 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getRecentFlushes(): array
     {
-        return $this->getFpcHelper()->getRecentFlushes(15, $this->getPeriodHours());
+        return $this->getFpcHelper()->getRecentFlushes(15, $this->getPeriodHours(), $this->getStoreFilter());
     }
 
     /**
@@ -114,7 +169,15 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getHourlyStats(): array
     {
-        return $this->getFpcHelper()->getHourlyStats($this->getPeriodHours());
+        return $this->getFpcHelper()->getHourlyStats($this->getPeriodHours(), $this->getStoreFilter());
+    }
+
+    /**
+     * @return array<int, array{hour: string, avg_ttfb: float, p95_ttfb: int}>
+     */
+    public function getHourlyTtfb(): array
+    {
+        return $this->getFpcHelper()->getHourlyTtfb($this->getPeriodHours(), $this->getStoreFilter());
     }
 
     /**

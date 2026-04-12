@@ -73,7 +73,7 @@ class Mageaustralia_Fpc_Block_Adminhtml_System_Config_DynamicBlocks
     }
 
     #[\Override]
-    protected function _prepareArrayRow(Varien_Object $row): void
+    protected function _prepareArrayRow(Maho\DataObject $row): void
     {
         $options = [];
         $mode = $row->getData('mode');

@@ -21,14 +21,14 @@ class Mageaustralia_Fpc_Block_Adminhtml_System_Config_FlushButton extends Mage_A
      * Render the flush button instead of the default input field.
      */
     #[\Override]
-    protected function _getElementHtml(Varien_Data_Form_Element_Abstract $element): string
+    protected function _getElementHtml(Maho\Data\Form\Element\AbstractElement $element): string
     {
         $url = Mage::helper('adminhtml')->getUrl('adminhtml/system_config_fpc/flush');
         $formKey = Mage::getSingleton('core/session')->getFormKey();
 
-        $js = "var fd = new FormData(); fd.append('form_key','" . $this->escapeHtml($formKey) . "'); "
-            . "fetch('" . $this->escapeUrl($url) . "', {method:'POST', body:fd, headers:{'X-Requested-With':'XMLHttpRequest'}})"
-            . ".then(function(r){if(r.ok){alert('FPC flushed successfully!');location.reload();}else{alert('Error: '+r.status);}});";
+        $js = "mahoFetch('" . $this->escapeUrl($url) . "', {method:'POST', loaderArea:false})"
+            . ".then(function(){alert('FPC flushed successfully!');location.reload();})"
+            . ".catch(function(e){alert('Error: '+e.message);});";
 
         return $this->getLayout()
             ->createBlock('adminhtml/widget_button')

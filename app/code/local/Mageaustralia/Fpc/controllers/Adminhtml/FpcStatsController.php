@@ -1,11 +1,16 @@
 <?php
 
+/**
+ * Mageaustralia_Fpc — Full Page Cache
+ *
+ * Copyright (c) 2026 Mage Australia (https://mageaustralia.com.au)
+ * Licensed under the Open Software License v3.0 (OSL-3.0)
+ */
+
 declare(strict_types=1);
 
 class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Controller_Action
 {
-    public const ADMIN_RESOURCE = 'system/config/mageaustralia_fpc';
-
     public function indexAction(): void
     {
         $this->loadLayout();
@@ -15,6 +20,7 @@ class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Cont
     #[\Override]
     protected function _isAllowed(): bool
     {
-        return true;
+        return Mage::getSingleton('admin/session')
+            ->isAllowed('mageaustralia/fpc_stats');
     }
 }

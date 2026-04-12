@@ -61,6 +61,30 @@
         }
     }
 
+    // ── Ensure form key is available ────────────────────────────────
+
+    function ensureFormKey() {
+        if (window._fpcFormKeyReady) {
+            return Promise.resolve();
+        }
+        // Wait for the dynamic loader to finish (it sets _fpcFormKeyReady)
+        return mahoFetch('/fpc/dynamic/', { loaderArea: false }).then(function (data) {
+            if (data && data.form_key) {
+                var fkInputs = document.querySelectorAll('input[name="form_key"]');
+                for (var fi = 0; fi < fkInputs.length; fi++) fkInputs[fi].value = data.form_key;
+                window._fpcFormKeyReady = true;
+            }
+        }).catch(function () {});
+    }
+
+    // ── Safe text helper (prevent XSS) ──────────────────────────────
+
+    function escText(str) {
+        var d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
     // ── AJAX submit ─────────────────────────────────────────────────
 
     function ajaxAddToCart(form) {
@@ -68,36 +92,6 @@
         if (!url) {
             return false;
         }
-
-        // Ensure we have a fresh form_key (FPC cached pages have stale keys)
-        if (!window._fpcFormKeyReady) {
-            // Dynamic loader hasn't finished — fetch form_key synchronously-ish
-            var fkReq = new XMLHttpRequest();
-            fkReq.open('GET', '/fpc/dynamic/', false); // synchronous
-            try {
-                fkReq.send();
-                if (fkReq.status === 200) {
-                    var fkData = JSON.parse(fkReq.responseText);
-                    if (fkData.form_key) {
-                        var fkInputs = document.querySelectorAll('input[name="form_key"]');
-                        for (var fi = 0; fi < fkInputs.length; fi++) fkInputs[fi].value = fkData.form_key;
-                        window._fpcFormKeyReady = true;
-                    }
-                }
-            } catch(e) {}
-        }
-
-        // Append isAjax param
-        if (url.indexOf('isAjax') === -1) {
-            url += (url.indexOf('?') === -1 ? '?' : '&') + 'isAjax=true';
-        }
-
-        var formData = new FormData(form);
-
-        // Add EasyAjax params for server-side block rendering
-        formData.append("easy_ajax", "1");
-        formData.append("action_content[0]", "cart_toggle_sidebar");
-        formData.append("action_content[1]", "cart_toggle");
 
         // Disable submit button to prevent double-clicks
         var submitBtn = form.querySelector('button[type="submit"], .btn-cart');
@@ -108,26 +102,31 @@
             submitBtn.textContent = 'Adding...';
         }
 
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', url, true);
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-
-        xhr.onload = function () {
-            // Re-enable button
+        function restoreButton() {
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }
+        }
 
-            if (xhr.status !== 200) {
-                showToast('Failed to add item to cart', 'error');
-                return;
-            }
+        // Ensure form key is fresh, then submit
+        ensureFormKey().then(function () {
+            var formData = new FormData(form);
 
-            var data;
-            try {
-                data = JSON.parse(xhr.responseText);
-            } catch (e) {
+            // Add EasyAjax params for server-side block rendering
+            formData.append("easy_ajax", "1");
+            formData.append("action_content[0]", "cart_toggle_sidebar");
+            formData.append("action_content[1]", "cart_toggle");
+
+            return mahoFetch(url, {
+                method: 'POST',
+                body: formData,
+                loaderArea: false,
+            });
+        }).then(function (data) {
+            restoreButton();
+
+            if (!data) {
                 showToast('Failed to add item to cart', 'error');
                 return;
             }
@@ -161,34 +160,23 @@
                 }
             } else if (data.message) {
                 showToast(data.message);
-            } else if (data.message) {
-                showToast(data.message);
             } else if (data.success) {
                 showToast('Item added to cart');
             }
 
-            // Update blocks from EasyAjax response
+            // Update blocks from EasyAjax response (data-attribute driven)
+            // Themes add [data-fpc-ajax-block="block_name"] to elements they want updated
             if (data.action_content_data) {
-                if (data.action_content_data.cart_toggle) {
-                    var toggle = document.querySelector("a.cart-toggle");
-                    if (toggle) toggle.outerHTML = data.action_content_data.cart_toggle;
-                }
-                if (data.action_content_data.cart_toggle_sidebar) {
-                    var sidebarBlock = document.querySelector(".header-cart-wrapper .block-cart");
-                    if (sidebarBlock) sidebarBlock.outerHTML = data.action_content_data.cart_toggle_sidebar;
-                // Briefly show the cart dropdown
-                var wrapper = document.querySelector(".header-cart-wrapper");
-                if (wrapper) {
-                    wrapper.style.display = "block";
-                    setTimeout(function() { wrapper.style.display = ""; }, 5000);
-                }
-                }
-            } else if (data.content) {
-                var sidebar = document.getElementById('mini-cart-sidebar');
-                if (sidebar) {
-                    sidebar.innerHTML = data.content;
+                for (var blockName in data.action_content_data) {
+                    var target = document.querySelector('[data-fpc-ajax-block="' + blockName + '"]');
+                    if (target) {
+                        target.outerHTML = data.action_content_data[blockName];
+                    }
                 }
             }
+
+            // Dispatch event so themes can react (e.g. open cart drawer, refresh minicart)
+            document.dispatchEvent(new CustomEvent('fpc:cart:updated', { detail: data }));
 
             // Update form key if returned
             if (data.form_key) {
@@ -197,17 +185,11 @@
                     formKeyInputs[k].value = data.form_key;
                 }
             }
-        };
+        }).catch(function () {
+            restoreButton();
+            showToast('Failed to add item to cart', 'error');
+        });
 
-        xhr.onerror = function () {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
-            }
-            showToast('Network error — please try again', 'error');
-        };
-
-        xhr.send(formData);
         return true;
     }
 

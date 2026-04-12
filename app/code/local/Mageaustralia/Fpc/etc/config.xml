@@ -2,7 +2,7 @@
 <config>
     <modules>
         <Mageaustralia_Fpc>
-            <version>1.1.0</version>
+            <version>1.2.1</version>
         </Mageaustralia_Fpc>
     </modules>
     <global>
@@ -26,6 +26,9 @@
                     <stats>
                         <table>mageaustralia_fpc_stats</table>
                     </stats>
+                    <stats_hourly>
+                        <table>mageaustralia_fpc_stats_hourly</table>
+                    </stats_hourly>
                 </entities>
             </mageaustralia_fpc_resource>
         </models>
@@ -197,6 +200,22 @@
                     <model>mageaustralia_fpc/observer::cleanOldStats</model>
                 </run>
             </mageaustralia_fpc_stats_cleanup>
+            <mageaustralia_fpc_stats_rollup>
+                <schedule>
+                    <cron_expr>5 * * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::rollupHourlyStats</model>
+                </run>
+            </mageaustralia_fpc_stats_rollup>
+            <mageaustralia_fpc_warmup_scheduled>
+                <schedule>
+                    <config_path>system/fpc/warmup_schedule</config_path>
+                </schedule>
+                <run>
+                    <model>mageaustralia_fpc/observer::processScheduledWarmup</model>
+                </run>
+            </mageaustralia_fpc_warmup_scheduled>
         </jobs>
     </crontab>
     <adminhtml>
@@ -306,8 +325,16 @@ srsltid</miss_uri_params>
                 <warmup_delay_ms>100</warmup_delay_ms>
                 <warmup_sitemap_path></warmup_sitemap_path>
                 <warmup_basic_auth></warmup_basic_auth>
+                <reset_remove_selectors>.mfp-bg, .mfp-wrap, .modal-backdrop, .aa-DetachedOverlay, .meilisearch-autocomplete</reset_remove_selectors>
+                <reset_close_selectors>.meilisearch-autocomplete.open</reset_close_selectors>
+                <reset_body_classes>modal-open, no-scroll, overflow-hidden, mfp-zoom-out-cur</reset_body_classes>
+                <reset_clear_inputs>.meilisearch-search-input</reset_clear_inputs>
+                <reset_clone_selectors>.meilisearch-search-input</reset_clone_selectors>
+                <reset_dispatch_escape>1</reset_dispatch_escape>
+                <warmup_schedule></warmup_schedule>
                 <stats_enabled>0</stats_enabled>
                 <stats_retention_days>30</stats_retention_days>
+                <stats_rollup_retention_days>90</stats_rollup_retention_days>
             </fpc>
         </system>
     </default>

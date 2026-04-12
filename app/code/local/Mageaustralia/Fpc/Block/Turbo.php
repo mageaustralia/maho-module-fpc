@@ -99,85 +99,95 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
     if (document.readyState !== 'loading') disableTurboOnExcludedForms();
     else document.addEventListener('DOMContentLoaded', disableTurboOnExcludedForms);
 
-    // ── Generic re-init: re-dispatch lifecycle events after Turbo body swap ──
-    // This re-triggers ALL existing DOMContentLoaded and window.load handlers
-    // from app.js, minicart.js, swatches, etc. — fully theme-agnostic.
-    document.addEventListener('turbo:load', function() {
-        document.dispatchEvent(new Event('DOMContentLoaded'));
-        window.dispatchEvent(new Event('load'));
+    // ── Reset transient UI state on Turbo navigation ──
+    // All selectors driven by admin config (window.FPC_CONFIG) — themes need zero changes.
+    // Configurable in System > Config > FPC > Turbo Drive (Reset: ... fields).
+    function fpcResetTransientState() {
+        var c = window.FPC_CONFIG || {};
+
+        // Remove dynamically-injected overlay/modal elements
+        if (c.resetRemoveSelectors) {
+            try {
+                document.querySelectorAll(c.resetRemoveSelectors).forEach(function(el) { el.remove(); });
+            } catch(e) {}
+        }
+
+        // Remove "open" class from permanent page elements
+        if (c.resetCloseSelectors) {
+            try {
+                document.querySelectorAll(c.resetCloseSelectors).forEach(function(el) {
+                    el.classList.remove('open');
+                    el.style.display = '';
+                });
+            } catch(e) {}
+        }
+
+        // Remove body classes that indicate popup-open state
+        if (c.resetBodyClasses) {
+            c.resetBodyClasses.split(',').forEach(function(cls) {
+                document.body.classList.remove(cls.trim());
+            });
+            document.body.style.overflow = '';
+        }
+
+        // Clear input values (e.g. search inputs)
+        if (c.resetClearInputs) {
+            try {
+                document.querySelectorAll(c.resetClearInputs).forEach(function(input) { input.value = ''; });
+            } catch(e) {}
+        }
+
+        // Clone-and-replace elements to strip all JS event listeners.
+        // Essential for third-party libraries (Meilisearch, Algolia) that
+        // re-attach listeners on every init() — cloning gives them a fresh
+        // element with no previous listeners, preventing request buildup.
+        if (c.resetCloneSelectors) {
+            try {
+                document.querySelectorAll(c.resetCloneSelectors).forEach(function(el) {
+                    var clone = el.cloneNode(true);
+                    clone.value = '';
+                    el.parentNode.replaceChild(clone, el);
+                });
+            } catch(e) {}
+        }
+
+        // Null out global autocomplete references (prevents instance buildup)
+        if (window.algoliaAutocomplete) { try { window.algoliaAutocomplete.destroy(); } catch(e) {} window.algoliaAutocomplete = null; }
+        if (window.meilisearchAutocomplete) { try { window.meilisearchAutocomplete.destroy(); } catch(e) {} window.meilisearchAutocomplete = null; }
+    }
+
+    // Close popups before navigation by dispatching ESC key
+    document.addEventListener('turbo:before-visit', function() {
+        if ((window.FPC_CONFIG || {}).resetDispatchEscape) {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+        }
     });
 
-    // ── Offcanvas: capture-phase handler with fresh dialog ref on every click ──
-    // Needed because app.js closures capture stale dialog references after Turbo swap.
-    // This handler fires BEFORE app.js and uses a fresh getElementById each time.
-    document.addEventListener('click', function(e) {
-        var trigger = e.target.closest('.offcanvas-trigger');
-        if (!trigger) return;
+    // Clean transient state before Turbo caches the page
+    document.addEventListener('turbo:before-cache', fpcResetTransientState);
 
-        var dialog = document.getElementById('offcanvas');
-        if (!dialog || !document.body.contains(dialog)) return;
+    // ── Generic re-init: re-dispatch lifecycle events after Turbo body swap ──
+    // This re-triggers existing DOMContentLoaded and window.load handlers
+    // from app.js, minicart.js, swatches, etc. — fully theme-agnostic.
+    // Sets a flag so scripts can detect Turbo re-init vs genuine page load.
+    document.addEventListener('turbo:load', function() {
+        // Reset BEFORE re-dispatching DOMContentLoaded.
+        // This clones inputs and removes stale dropdowns so that when
+        // third-party libraries (Meilisearch, Algolia) re-initialize via
+        // their own DOMContentLoaded listener, they attach to a fresh
+        // element with no prior listeners. Prevents request buildup.
+        fpcResetTransientState();
 
-        var sel = trigger.getAttribute('data-offcanvas-target');
-        var title = trigger.getAttribute('data-offcanvas-title') || trigger.textContent.trim();
-        var pos = trigger.getAttribute('data-offcanvas-position') || 'left';
-        var desktop = trigger.getAttribute('data-offcanvas-desktop') === 'true';
-        if (!desktop && window.innerWidth >= 768) return;
+        window._turboReinit = true;
+        document.dispatchEvent(new Event('DOMContentLoaded'));
+        window.dispatchEvent(new Event('load'));
+        window._turboReinit = false;
 
-        e.preventDefault();
-        e.stopImmediatePropagation();
-
-        dialog.currentTrigger = trigger;
-        var titleEl = dialog.querySelector('.offcanvas-title');
-        if (titleEl) titleEl.textContent = title;
-        if (pos === 'right') dialog.classList.add('offcanvas-right');
-        else dialog.classList.remove('offcanvas-right');
-
-        var content = dialog.querySelector('.offcanvas-content');
-        if (content && sel) {
-            var target = document.querySelector(sel);
-            if (target && target.parentNode !== content) {
-                content.innerHTML = '';
-                content.appendChild(target);
-            }
+        // Close any popups that the re-init may have opened
+        if ((window.FPC_CONFIG || {}).resetDispatchEscape) {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true }));
         }
-
-        dialog.style.transition = 'none';
-        dialog.offsetHeight;
-        dialog.style.transition = '';
-        try { dialog.showModal(); } catch(ex) {}
-
-        // Close handlers (fresh refs)
-        var closeBtn = dialog.querySelector('.offcanvas-close');
-        if (closeBtn) {
-            closeBtn.onclick = function() { try { dialog.close(); } catch(x) {} dialog.currentTrigger = null; };
-        }
-        dialog.onclick = function(ev) {
-            if (ev.target === dialog) { try { dialog.close(); } catch(x) {} dialog.currentTrigger = null; }
-        };
-
-        // If opening cart sidebar, refresh minicart content via AJAX
-        if (sel && sel.indexOf('minicart') !== -1) {
-            fetch('/fpc/dynamic/minicart/', {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(function(r) { return r.text(); })
-            .then(function(html) {
-                if (!html || !html.trim()) return;
-                var wrapper = content ? content.querySelector('.minicart-wrapper') : null;
-                if (!wrapper) wrapper = content;
-                if (wrapper) {
-                    wrapper.innerHTML = html;
-                    // Re-init Minicart JS so remove/update handlers bind to new elements
-                    if (typeof Minicart !== 'undefined') {
-                        var fk = wrapper.querySelector('input[name="form_key"]')
-                            || document.querySelector('input[name="form_key"]');
-                        var formKey = fk ? fk.value : (window.minicart ? window.minicart.formKey : '');
-                        try { window.minicart = new Minicart({ formKey: formKey }); window.minicart.init(); } catch(ex) {}
-                    }
-                }
-            }).catch(function() {});
-        }
-    }, true);
+    });
 
     if (typeof Turbo !== 'undefined') {
         Turbo.config.drive.progressBarDelay = 150;

@@ -37,7 +37,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
                 $table = Mage::getSingleton('core/resource')->getTableName('mageaustralia_fpc_stats');
                 $db->insert($table, [
                     'event_type' => 'hit',
-                    'url_path'   => '/' . ltrim(substr($pagePath, 0, 500), '/'),
+                    'url_path'   => ltrim(substr($pagePath, 0, 500), '/'),
                     'ttfb_ms'    => (int) $this->getRequest()->getParam('ttfb', 0),
                     'store_code' => Mage::app()->getStore()->getCode(),
                     'created_at' => date('Y-m-d H:i:s'),

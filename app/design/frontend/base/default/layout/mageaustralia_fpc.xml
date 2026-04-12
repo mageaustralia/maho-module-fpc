@@ -7,6 +7,9 @@
 <layout version="0.1.0">
     <default>
         <reference name="head">
+            <!-- FPC config (outputs window.FPC_CONFIG with admin-configured selectors) -->
+            <block type="mageaustralia_fpc/config" name="fpc.config" before="-" />
+
             <!-- FPC scripts -->
             <action method="addJs">
                 <script>mageaustralia/fpc/loader.js</script>
