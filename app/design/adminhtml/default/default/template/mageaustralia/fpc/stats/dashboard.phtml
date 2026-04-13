@@ -130,12 +130,29 @@ if ($niceTtfbMax < 1) {
     .fpc-dash tr:hover td { background: #f9fafb; }
     .fpc-dash .fpc-url { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; color: #4f46e5; word-break: break-all; }
     .fpc-dash .fpc-count { font-weight: 600; text-align: right; }
-    .fpc-dash .fpc-reason { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
     .fpc-dash .fpc-time { color: #9ca3af; white-space: nowrap; }
     .fpc-dash .fpc-store { font-size: 11px; color: #9ca3af; }
 
     .fpc-dash .fpc-empty { text-align: center; padding: 32px; color: #9ca3af; font-size: 14px; }
-    .fpc-dash .fpc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .fpc-dash .fpc-grid-2 {
+        display: grid;
+        /* minmax(0, 1fr) enforces strict 50/50; without the 0-min, long
+           unbreakable content in one column can steal width from the other */
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px;
+    }
+    .fpc-dash .fpc-grid-2 > .fpc-section { min-width: 0; }
+    .fpc-dash .fpc-reason {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 12px;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
+    }
+    .fpc-dash .fpc-reason:hover { white-space: normal; word-break: break-all; }
+    .fpc-dash td.fpc-reason { max-width: 0; }
 
     /* Chart tooltip */
     .fpc-dash .fpc-chart-wrap { position: relative; }
