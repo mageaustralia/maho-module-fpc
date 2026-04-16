@@ -25,6 +25,12 @@ High-performance full page cache module for [Maho](https://mahocommerce.com) (PH
 > Tested with `wrk -t4 -c50 -d10s` from a nearby server (~1ms RTT).
 > Static bypass serves cached HTML via Caddy `try_files` — PHP never runs.
 
+## Stats Dashboard
+
+![FPC Statistics Dashboard](screenshots/dashboard.png)
+
+Built-in admin dashboard showing hit rate, TTFB, cache flushes, hit/miss trends over time, top missed URLs, and recent flush events. No external tools needed.
+
 ## Features
 
 ### Full Page Cache
