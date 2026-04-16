@@ -22,19 +22,25 @@
 (function () {
     'use strict';
 
-    // Only activate when Turbo is actually loaded. Without Turbo, the base
-    // theme's initOffcanvas works fine and this script's stopImmediatePropagation
-    // would kill other click handlers (e.g. loader.js's minicart AJAX refresh).
-    if (!window._mahoTurboInit && typeof Turbo === 'undefined') return;
-
     // Track moved elements for restoration on close
     var movedElements = new Map();
+
+    // Check if Turbo is active at CALL TIME (not parse time — turbo-compat.js
+    // loads before the Turbo library/init script in the head).
+    function isTurboActive() {
+        return !!(window._mahoTurboInit || typeof Turbo !== 'undefined');
+    }
 
     // Detect mobile breakpoint — base theme uses 770px
     var mobileQuery = window.matchMedia('(max-width: 770px)');
 
     // ── Capture-phase click handler — overrides app.js's offcanvas ──
     document.addEventListener('click', function (e) {
+        // Only intercept when Turbo is active. Without Turbo, the base
+        // theme's initOffcanvas works fine and stopImmediatePropagation
+        // would kill loader.js's minicart AJAX handler.
+        if (!isTurboActive()) return;
+
         var trigger = e.target.closest('.offcanvas-trigger');
         if (!trigger) return;
 
@@ -152,6 +158,7 @@
 
     // ── Turbo: close offcanvas + restore before navigation ──
     document.addEventListener('turbo:before-visit', function () {
+        if (!isTurboActive()) return;
         var offcanvas = document.getElementById('offcanvas');
         if (offcanvas && offcanvas.open) {
             closeOffcanvas(offcanvas);
