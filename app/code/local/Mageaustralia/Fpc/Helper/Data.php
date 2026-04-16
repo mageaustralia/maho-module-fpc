@@ -231,16 +231,24 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     /**
      * Build the cache key for the current request.
      *
-     * Uses URL-path-based keys (Zoom FPC style) so nginx can serve static files
-     * directly via try_files without computing hashes.
+     * Uses URL-path-based keys so any web server (nginx, Caddy/FrankenPHP,
+     * Apache) can serve static files directly via try_files without
+     * computing hashes or rewriting URIs.
      *
-     * Format: {store_code}/{url_path}[__param-val][__gN].html
+     * Format follows the nginx / static-site convention:
+     *   - Directory-style URLs (trailing slash or bare): {path}/index.html
+     *   - File-style URLs (with extension):              {path}
+     *   - Homepage:                                      index.html
+     *
+     * This lets a trivial `try_files {uri}index.html {uri}` matcher serve
+     * both category and product pages without any path transformation.
      *
      * Examples:
-     *   default/shoes.html                (base URL)
-     *   default/shoes__p-2.html           (page 2)
-     *   default/shoes__g1.html            (customer group 1)
-     *   default/index.html                (homepage)
+     *   URL /                                 → en/index.html
+     *   URL /accessories/                     → en/accessories/index.html
+     *   URL /pants/khaki-chino-pants.html     → en/pants/khaki-chino-pants.html
+     *   URL /accessories/?p=2                 → en/accessories/index__p-2.html
+     *   URL /accessories/ (group 1)           → en/accessories/index__g1.html
      */
     public function buildCacheKey(?Mage_Core_Controller_Request_Http $request = null): string
     {
@@ -250,21 +258,32 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
         $storeCode = Mage::app()->getStore()->getCode();
 
-        // Use the original request URI (rewritten URL), not the internal route
-        $path = trim($request->getOriginalPathInfo() ?: $request->getPathInfo(), '/');
+        // Detect directory-style (trailing slash) URLs BEFORE the trim,
+        // because trim() would drop the signal we need.
+        $originalUri = $request->getOriginalPathInfo() ?: $request->getPathInfo();
+        $isDirStyle  = str_ends_with((string) $originalUri, '/');
 
-        // Homepage
+        $path = trim((string) $originalUri, '/');
+
+        // Homepage — always index.html at the store root.
         if ($path === '') {
             $path = 'index.html';
+            $ext  = 'html';
+            $base = 'index';
+        } elseif (pathinfo($path, PATHINFO_EXTENSION) !== '') {
+            // File-style URL (e.g. /foo.html) — keep as-is.
+            $ext  = pathinfo($path, PATHINFO_EXTENSION);
+            $base = substr($path, 0, -(strlen($ext) + 1));
+        } else {
+            // Directory-style (e.g. /accessories/ or /accessories) — both are
+            // canonically stored as {path}/index.html so Caddy's default
+            // try_files can serve them directly without URI rewriting.
+            $ext  = 'html';
+            $base = $path . '/index';
+            $path = $base . '.html';
         }
-
-        // Separate base and extension
-        $ext = pathinfo($path, PATHINFO_EXTENSION);
-        if ($ext === '') {
-            $path .= '.html';
-            $ext = 'html';
-        }
-        $base = substr($path, 0, -(strlen($ext) + 1));
+        // Suppress unused-var warning if the branch above was homepage.
+        unset($isDirStyle);
 
         // Build suffix from allowed URI params
         $suffix = '';

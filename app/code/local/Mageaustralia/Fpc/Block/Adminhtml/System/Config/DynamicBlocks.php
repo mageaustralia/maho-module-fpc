@@ -31,25 +31,30 @@ class Mageaustralia_Fpc_Block_Adminhtml_System_Config_DynamicBlocks
     #[\Override]
     protected function _prepareToRender(): void
     {
+        // Column widths are tight on purpose: the admin System Config form
+        // wraps each field in a fixed-width column, so if the sum of these
+        // plus the Delete button exceeds the available space the table
+        // overflows horizontally. Keep the total under ~650px of content.
         $this->addColumn('name', [
             'label' => Mage::helper('mageaustralia_fpc')->__('Name'),
-            'style' => 'width:120px',
+            'style' => 'width:110px',
         ]);
         $this->addColumn('block_type', [
             'label' => Mage::helper('mageaustralia_fpc')->__('Block Type'),
-            'style' => 'width:200px',
+            'style' => 'width:160px',
             'comment' => 'e.g. checkout/cart_sidebar or helper:checkout/cart:getSummaryCount',
         ]);
         $this->addColumn('template', [
             'label' => Mage::helper('mageaustralia_fpc')->__('Template'),
-            'style' => 'width:200px',
+            'style' => 'width:110px',
         ]);
         $this->addColumn('selector', [
             'label' => Mage::helper('mageaustralia_fpc')->__('CSS Selector'),
-            'style' => 'width:180px',
+            'style' => 'width:150px',
         ]);
         $this->addColumn('mode', [
             'label' => Mage::helper('mageaustralia_fpc')->__('Mode'),
+            'style' => 'width:80px',
             'renderer' => $this->getModeRenderer(),
         ]);
 
