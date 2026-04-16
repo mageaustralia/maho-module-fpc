@@ -342,7 +342,12 @@
                     cartWrapper.addEventListener('click', function() {
                         var blockContent = document.querySelector(contentSel);
                         if (!blockContent) return;
-                        _fpcFetch('/fpc/dynamic/minicart/', { loaderArea: false })
+                        // /fpc/dynamic/minicart/ returns raw HTML (text/html),
+                        // NOT JSON. Use fetch().text() directly instead of
+                        // _fpcFetch which calls r.json() and would throw.
+                        var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/';
+                        window.fetch(minicartUrl, { credentials: 'same-origin' })
+                        .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
                         .then(function(html) {
                             if (html && html.trim()) {
                                 blockContent.innerHTML = html;

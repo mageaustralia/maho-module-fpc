@@ -88,4 +88,30 @@ class Mageaustralia_Fpc_Block_Adminhtml_System_Config_DynamicBlocks
         }
         $row->setData('option_extra_attrs', $options);
     }
+
+    #[\Override]
+    protected function _toHtml(): string
+    {
+        $html = parent::_toHtml();
+        $id = $this->getHtmlId() ?: '_' . uniqid();
+        // Column order: 1=Name, 2=Block Type, 3=Template, 4=CSS Selector, 5=Mode, 6+=Delete/Add
+        return <<<CSS
+<style>
+#grid{$id} table.border { table-layout: fixed; width: 100%; }
+#grid{$id} table.border th:nth-child(1),
+#grid{$id} table.border td:nth-child(1) { width: 14%; }
+#grid{$id} table.border th:nth-child(2),
+#grid{$id} table.border td:nth-child(2) { width: 24%; }
+#grid{$id} table.border th:nth-child(3),
+#grid{$id} table.border td:nth-child(3) { width: 14%; }
+#grid{$id} table.border th:nth-child(4),
+#grid{$id} table.border td:nth-child(4) { width: 22%; }
+#grid{$id} table.border th:nth-child(5),
+#grid{$id} table.border td:nth-child(5) { width: 10%; }
+#grid{$id} table.border td input,
+#grid{$id} table.border td select { width: 100%; box-sizing: border-box; }
+</style>
+CSS
+            . $html;
+    }
 }
