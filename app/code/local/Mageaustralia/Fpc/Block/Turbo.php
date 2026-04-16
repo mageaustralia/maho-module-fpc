@@ -154,12 +154,52 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
         // Null out global autocomplete references (prevents instance buildup)
         if (window.algoliaAutocomplete) { try { window.algoliaAutocomplete.destroy(); } catch(e) {} window.algoliaAutocomplete = null; }
         if (window.meilisearchAutocomplete) { try { window.meilisearchAutocomplete.destroy(); } catch(e) {} window.meilisearchAutocomplete = null; }
+
+        // Clone [data-confirm] elements (minicart remove links) to strip
+        // accumulated click handlers. minicart.js's init() binds a confirm()
+        // handler on each one; without cloning, N Turbo navigations = N
+        // confirm dialogs on a single click. The subsequent DOMContentLoaded
+        // re-dispatch re-runs minicart.init() which binds ONE fresh handler
+        // to the cloned (clean) elements.
+        try {
+            document.querySelectorAll('[data-confirm]').forEach(function(el) {
+                var clone = el.cloneNode(true);
+                if (el.parentNode) el.parentNode.replaceChild(clone, el);
+            });
+        } catch(e) {}
     }
 
     // Close popups before navigation by dispatching ESC key
     document.addEventListener('turbo:before-visit', function() {
         if ((window.FPC_CONFIG || {}).resetDispatchEscape) {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+        }
+    });
+
+    // ── Preserve stateful elements across Turbo navigations ──
+    // Turbo replaces document.body on each navigation. Any element that
+    // theme JS captures in a closure at DOMContentLoaded time (e.g. the
+    // offcanvas <dialog>) becomes detached from the new body. The closure
+    // then references a dead node → showModal() throws.
+    //
+    // data-turbo-permanent doesn't work here because it requires the
+    // attribute in BOTH old AND new page HTML — and the new page comes
+    // from the server without any client-side attrs. Instead, we use
+    // turbo:before-render to TRANSPLANT the live dialog from the old body
+    // into the new body before Turbo swaps, keeping the closure valid.
+    document.addEventListener('turbo:before-render', function(event) {
+        var preserveIds = ['offcanvas'];
+        var newBody = event.detail.newBody;
+        if (!newBody) return;
+        for (var i = 0; i < preserveIds.length; i++) {
+            var oldEl = document.getElementById(preserveIds[i]);
+            if (!oldEl) continue;
+            var newEl = newBody.querySelector('#' + preserveIds[i]);
+            if (newEl) {
+                // Replace the server-rendered element with the live one
+                // so the closure from initOffcanvas() stays valid.
+                newEl.replaceWith(oldEl);
+            }
         }
     });
 
@@ -172,16 +212,50 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
     // Sets a flag so scripts can detect Turbo re-init vs genuine page load.
     document.addEventListener('turbo:load', function() {
         // Reset BEFORE re-dispatching DOMContentLoaded.
-        // This clones inputs and removes stale dropdowns so that when
-        // third-party libraries (Meilisearch, Algolia) re-initialize via
-        // their own DOMContentLoaded listener, they attach to a fresh
-        // element with no prior listeners. Prevents request buildup.
         fpcResetTransientState();
+
+        // Suppress classes that accumulate handlers on DOMContentLoaded:
+        //
+        // 1. #offcanvas: initOffcanvas() adds a click handler each time.
+        //    turbo-compat.js handles offcanvas via capture-phase handler
+        //    that queries the dialog fresh — no stale closures.
+        //    Hide the element so initOffcanvas's guard skips.
+        //
+        // 2. Minicart: inline <script> in the minicart block registers a
+        //    DOMContentLoaded listener on each Turbo nav (body scripts
+        //    re-evaluate). After N navs, N listeners fire on re-dispatch,
+        //    each calling minicart.init() → N confirm-dialog handlers
+        //    per remove link. Swap the class with a no-op during dispatch,
+        //    then manually init ONE real instance after.
+        var origGetById = document.getElementById.bind(document);
+        document.getElementById = function(id) {
+            if (id === 'offcanvas') return null;
+            return origGetById(id);
+        };
+
+        var _RealMinicart = window.Minicart;
+        if (typeof _RealMinicart === 'function') {
+            window.Minicart = function() { this.init = function() {}; };
+        }
 
         window._turboReinit = true;
         document.dispatchEvent(new Event('DOMContentLoaded'));
         window.dispatchEvent(new Event('load'));
         window._turboReinit = false;
+
+        document.getElementById = origGetById;
+
+        // Restore Minicart and init ONE fresh instance with the current
+        // form_key (already updated by loader.js's /fpc/dynamic/ response).
+        if (_RealMinicart) {
+            window.Minicart = _RealMinicart;
+            try {
+                var fkInput = document.querySelector('input[name="form_key"]');
+                var fk = fkInput ? fkInput.value : '';
+                window.minicart = new _RealMinicart({ formKey: fk });
+                window.minicart.init();
+            } catch(e) {}
+        }
 
         // Close any popups that the re-init may have opened
         if ((window.FPC_CONFIG || {}).resetDispatchEscape) {

@@ -17,11 +17,32 @@
             <action method="addJs">
                 <script>mageaustralia/fpc/ajax-cart.js</script>
             </action>
+            <action method="addJs">
+                <script>mageaustralia/fpc/turbo-compat.js</script>
+            </action>
 
             <!-- Turbo Drive (outputs script tag only when enabled in config) -->
             <block type="mageaustralia_fpc/turbo" name="fpc.turbo" after="-" />
         </reference>
     </default>
+
+    <!--
+        Product views: force full page reload on Turbo navigation.
+        Product pages load product.js, configurable.js, etc. which define
+        classes (Product.Config, Product.Zoom) used by inline scripts.
+        Turbo doesn't re-execute <head> scripts on nav, so navigating
+        TO a product page from a non-product page leaves those classes
+        undefined → ReferenceError. A full reload is the safe path.
+    -->
+    <catalog_product_view>
+        <reference name="head">
+            <block type="core/text" name="fpc.turbo.product.reload">
+                <action method="setText">
+                    <text><![CDATA[<meta name="turbo-visit-control" content="reload">]]></text>
+                </action>
+            </block>
+        </reference>
+    </catalog_product_view>
 
     <!--
         DynamicController layout — minimal: just load default blocks
