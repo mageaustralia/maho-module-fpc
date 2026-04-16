@@ -140,14 +140,17 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
 
         $this->loadLayout(['default']);
 
-        $blockName = Mage::getStoreConfig('system/fpc/minicart_block') ?: 'cart_sidebar';
+        $blockName = Mage::getStoreConfig('system/fpc/minicart_block') ?: 'minicart_content';
         $block = $this->getLayout()->getBlock($blockName);
 
         // Fallback: create block directly if layout doesn't have it
         if (!$block) {
-            // Maho renamed sidebar.phtml → minicart.phtml in the base theme.
-            // Try minicart.phtml first, fall back to sidebar.phtml for legacy themes.
-            $template = 'checkout/cart/minicart.phtml';
+            // Maho base theme uses checkout/cart/minicart/items.phtml for the
+            // inner cart content (product list + subtotal + checkout button).
+            // Legacy themes use checkout/cart/sidebar.phtml for the same.
+            // minicart.phtml renders the WHOLE header section (icon + wrapper)
+            // which is NOT what we want for the AJAX refresh.
+            $template = 'checkout/cart/minicart/items.phtml';
             if (!file_exists(Mage::getDesign()->getTemplateFilename($template))) {
                 $template = 'checkout/cart/sidebar.phtml';
             }
