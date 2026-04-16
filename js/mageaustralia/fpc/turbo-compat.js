@@ -108,11 +108,24 @@
                     .then(function (html) {
                         if (!html || !html.trim()) return;
                         // Inject into the content element (may be inside the offcanvas now)
-                        var el = document.querySelector(contentSel) || offcanvasContent.querySelector(contentSel.split(' ').pop());
-                        if (el) {
-                            el.innerHTML = html;
-                        } else if (offcanvasContent) {
-                            offcanvasContent.innerHTML = html;
+                        var target = document.querySelector(contentSel) || offcanvasContent.querySelector(contentSel.split(' ').pop()) || offcanvasContent;
+                        if (target) {
+                            target.innerHTML = html;
+                            // Execute inline <script> tags — they don't run
+                            // when injected via innerHTML. The minicart template
+                            // includes `new Minicart({formKey:...}).init()` which
+                            // binds remove/update handlers with a valid form_key.
+                            // Strip DOMContentLoaded wrapper (already fired).
+                            var scripts = target.querySelectorAll('script');
+                            for (var s = 0; s < scripts.length; s++) {
+                                var code = scripts[s].textContent || '';
+                                if (!code.trim()) continue;
+                                code = code.replace(
+                                    /document\.addEventListener\(\s*['"]DOMContentLoaded['"]\s*,\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*\)\s*;?/g,
+                                    '$1'
+                                );
+                                try { (0, eval)(code); } catch (e) {}
+                            }
                         }
                     })
                     .catch(function () {});
