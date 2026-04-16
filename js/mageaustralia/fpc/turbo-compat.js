@@ -86,6 +86,32 @@
         offcanvas.offsetHeight; // force reflow
         offcanvas.style.transition = '';
         offcanvas.showModal();
+
+        // If this is the minicart trigger, also fire the minicart AJAX
+        // refresh. Normally loader.js handles this, but our
+        // stopImmediatePropagation kills its handler. So we do it here
+        // since we already own the click. Uses the same config-driven
+        // approach — reads minicartContent selector from FPC_CONFIG.
+        if (trigger.classList.contains('skip-cart')) {
+            var cfg = window.FPC_CONFIG || {};
+            var contentSel = cfg.minicartContent || '';
+            if (contentSel) {
+                var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/';
+                window.fetch(minicartUrl, { credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.text() : ''; })
+                    .then(function (html) {
+                        if (!html || !html.trim()) return;
+                        // Inject into the content element (may be inside the offcanvas now)
+                        var el = document.querySelector(contentSel) || offcanvasContent.querySelector(contentSel.split(' ').pop());
+                        if (el) {
+                            el.innerHTML = html;
+                        } else if (offcanvasContent) {
+                            offcanvasContent.innerHTML = html;
+                        }
+                    })
+                    .catch(function () {});
+            }
+        }
     }, true); // ← capture phase
 
     // ── Close handlers ──
