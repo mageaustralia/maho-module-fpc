@@ -17,6 +17,23 @@
 (function () {
     'use strict';
 
+    // ── Fetch helper ────────────────────────────────────────────────
+    // mahoFetch() constructs `new URL(url)` with no base, which throws
+    // "TypeError: Invalid URL" on relative paths. Always pass an absolute
+    // URL so the promise chain doesn't silently die.
+    function _fpcFetch(url, opts) {
+        var absolute = url;
+        if (typeof url === 'string' && url.charAt(0) === '/') {
+            absolute = window.location.origin + url;
+        }
+        if (typeof window.mahoFetch === 'function') {
+            return window.mahoFetch(absolute, opts);
+        }
+        return window.fetch(absolute, { credentials: 'same-origin' }).then(function (r) {
+            return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
+        });
+    }
+
     // ── Toast notification ──────────────────────────────────────────
 
     function showToast(message, type) {
@@ -49,15 +66,27 @@
     }
 
     // ── Cart badge update ───────────────────────────────────────────
-
+    // Delegate to loader.js's shared applyCartQtyToDom() (config-driven,
+    // uses cfg.cartQtySelector / cfg.minicartTrigger, rotates count-N
+    // classes, injects missing badges). Also persist the new qty to
+    // localStorage so the NEXT page view can render the correct badge
+    // instantly without waiting for /fpc/dynamic/.
+    //
+    // Falls back to the legacy [data-cart-count] selector for themes
+    // that still use that pattern AND for the edge case where loader.js
+    // hasn't loaded (shouldn't happen — same layout block adds both).
     function updateCartCount(qty) {
-        var badges = document.querySelectorAll('[data-cart-count]');
-        for (var i = 0; i < badges.length; i++) {
-            badges[i].textContent = String(qty);
-            // Show/hide based on qty
-            if (qty > 0) {
-                badges[i].removeAttribute('hidden');
+        if (typeof window._fpcApplyCartQty === 'function') {
+            window._fpcApplyCartQty(qty);
+        } else {
+            var badges = document.querySelectorAll('[data-cart-count]');
+            for (var i = 0; i < badges.length; i++) {
+                badges[i].textContent = String(qty);
+                if (qty > 0) badges[i].removeAttribute('hidden');
             }
+        }
+        if (typeof window._fpcWriteCartState === 'function') {
+            window._fpcWriteCartState({ cart_qty: qty });
         }
     }
 
@@ -68,7 +97,7 @@
             return Promise.resolve();
         }
         // Wait for the dynamic loader to finish (it sets _fpcFormKeyReady)
-        return mahoFetch('/fpc/dynamic/', { loaderArea: false }).then(function (data) {
+        return _fpcFetch('/fpc/dynamic/', { loaderArea: false }).then(function (data) {
             if (data && data.form_key) {
                 var fkInputs = document.querySelectorAll('input[name="form_key"]');
                 for (var fi = 0; fi < fkInputs.length; fi++) fkInputs[fi].value = data.form_key;
@@ -118,7 +147,7 @@
             formData.append("action_content[0]", "cart_toggle_sidebar");
             formData.append("action_content[1]", "cart_toggle");
 
-            return mahoFetch(url, {
+            return _fpcFetch(url, {
                 method: 'POST',
                 body: formData,
                 loaderArea: false,
@@ -171,6 +200,65 @@
                     var target = document.querySelector('[data-fpc-ajax-block="' + blockName + '"]');
                     if (target) {
                         target.outerHTML = data.action_content_data[blockName];
+                    }
+                }
+            }
+
+            // Plain Maho core add-to-cart response format: `{success, message,
+            // qty, content}` where `content` is the rendered minicart HTML
+            // (typically wrapped in `<div class="minicart-wrapper">...`).
+            // Inject it into whatever the admin configured as the minicart
+            // content container — no template changes required. Falls through
+            // if the server returned EasyAjax action_content_data instead.
+            if (data.content && typeof data.content === 'string') {
+                // Single source of truth: admin config exposes the selector
+                // via window.FPC_CONFIG. Any theme works by configuring it —
+                // no data-attribute hooks in templates, no JS edits.
+                var cfg = window.FPC_CONFIG || {};
+                var contentSel = cfg.minicartContent || '';
+                var contentEl = contentSel ? document.querySelector(contentSel) : null;
+                if (contentEl) {
+                    // Response content is usually the full `.minicart-wrapper`
+                    // element. If our target already IS `.minicart-wrapper`,
+                    // replace it outright via outerHTML and re-resolve the
+                    // element afterwards. Otherwise inject as innerHTML of
+                    // the container.
+                    var isWrapper = contentEl.classList && contentEl.classList.contains('minicart-wrapper');
+                    if (isWrapper) {
+                        var parent = contentEl.parentNode;
+                        contentEl.outerHTML = data.content;
+                        // Re-resolve the new wrapper for script extraction
+                        contentEl = parent.querySelector('.minicart-wrapper');
+                    } else {
+                        contentEl.innerHTML = data.content;
+                    }
+
+                    // Inline <script> tags injected via innerHTML/outerHTML
+                    // are parsed but NOT executed. Find them, unwrap any
+                    // DOMContentLoaded listener (that event already fired so
+                    // any new listener would never run), and eval so the
+                    // base theme's `new Minicart({formKey:...}).init()` code
+                    // binds to the freshly injected DOM.
+                    if (contentEl) {
+                        var scripts = contentEl.querySelectorAll('script');
+                        for (var s = 0; s < scripts.length; s++) {
+                            var code = scripts[s].textContent || '';
+                            if (!code.trim()) continue;
+                            // Unwrap document.addEventListener('DOMContentLoaded', function() { ... });
+                            code = code.replace(
+                                /document\.addEventListener\(\s*['"]DOMContentLoaded['"]\s*,\s*function\s*\(\s*\)\s*\{([\s\S]*?)\}\s*\)\s*;?/g,
+                                '$1',
+                            );
+                            try {
+                                // Indirect eval — runs in global scope, same
+                                // as a real <script> tag at load time.
+                                (0, eval)(code);
+                            } catch (e) {
+                                if (window.console && console.warn) {
+                                    console.warn('[fpc] inline script eval failed:', e);
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -176,30 +176,50 @@ class Mageaustralia_Fpc_Model_Cache
             }
 
             foreach ($paths as $path) {
-                $path = trim($path, '/');
-                if ($path === '') {
-                    $path = 'index.html';
+                $rawPath = trim($path, '/');
+
+                // Build candidate (base, pattern) pairs covering both
+                // directory-style and file-style cache key formats. Which
+                // form was written depends on whether the invalidating URL
+                // ended in a trailing slash at save time — and we may not
+                // know from just the path string, so we purge BOTH
+                // candidates for any path without an extension.
+                $candidates = [];
+
+                if ($rawPath === '') {
+                    // Homepage
+                    $candidates[] = ['base' => 'index', 'ext' => 'html'];
+                } else {
+                    $ext = pathinfo($rawPath, PATHINFO_EXTENSION);
+                    if ($ext !== '') {
+                        // File-style URL (e.g. /foo.html) — one candidate only.
+                        $base = substr($rawPath, 0, -(strlen($ext) + 1));
+                        $candidates[] = ['base' => $base, 'ext' => $ext];
+                    } else {
+                        // Unknown style — purge both the directory-style form
+                        // ({path}/index.html, current) and the legacy
+                        // file-style form ({path}.html) so in-progress
+                        // redeploys don't leave stale files behind.
+                        $candidates[] = ['base' => $rawPath . '/index', 'ext' => 'html'];
+                        $candidates[] = ['base' => $rawPath,            'ext' => 'html'];
+                    }
                 }
 
-                // Separate base and extension for glob
-                $ext = pathinfo($path, PATHINFO_EXTENSION);
-                if ($ext === '') {
-                    $path .= '.html';
-                    $ext = 'html';
-                }
-                $base = substr($path, 0, -(strlen($ext) + 1));
+                foreach ($candidates as $c) {
+                    $base = $c['base'];
+                    $ext  = $c['ext'];
 
-                // Delete exact file (base URL, guest)
-                $cacheKey = $storeCode . '/' . $path;
-                $this->remove($cacheKey);
+                    // Delete exact file (base URL, guest)
+                    $this->remove($storeCode . '/' . $base . '.' . $ext);
 
-                // Glob for parameterized and customer group variants: base__*.html
-                $pattern = $storeDir . DS . $base . '__*.' . $ext;
-                foreach (glob($pattern) ?: [] as $file) {
-                    @unlink($file);
-                    // Also remove gzipped version
-                    if (is_file($file . '.gz')) {
-                        @unlink($file . '.gz');
+                    // Glob for parameterized and customer group variants:
+                    // base__*.ext (e.g. accessories/index__p-2.html)
+                    $pattern = $storeDir . DS . $base . '__*.' . $ext;
+                    foreach (glob($pattern) ?: [] as $file) {
+                        @unlink($file);
+                        if (is_file($file . '.gz')) {
+                            @unlink($file . '.gz');
+                        }
                     }
                 }
             }

@@ -29,7 +29,197 @@
 (function () {
     'use strict';
 
-    var cfg = window.FPC_CONFIG || {};
+    // NOTE: we do NOT cache `window.FPC_CONFIG` at parse time. The fpc.config
+    // inline script is emitted by Mage_Page_Block_Html_Head AFTER all addJs
+    // scripts — so at the moment loader.js is parsed, FPC_CONFIG doesn't
+    // exist yet. Reading it from a local variable captured here would give
+    // an empty object. Instead, resolve it on each call via getCfg().
+    function getCfg() {
+        return window.FPC_CONFIG || {};
+    }
+
+    // ── Optimistic cart state (localStorage) ────────────────────────
+    // The cached HTML renders with whatever cart qty was current at cache
+    // write time (often zero — first visit rendered the page). On each new
+    // page view the REAL qty only arrives after the /fpc/dynamic/ round-trip,
+    // so users see a ~150ms flash of the stale cached value. Avoid that by
+    // keeping last-known state in localStorage and applying it synchronously
+    // BEFORE the fetch fires, then letting the fetch confirm/correct.
+    var FPC_STATE_KEY = '_fpc_state_v1';
+    function readCachedState() {
+        try {
+            var raw = window.localStorage.getItem(FPC_STATE_KEY);
+            if (!raw) return null;
+            var obj = JSON.parse(raw);
+            // Ignore entries older than 24h — stale data is worse than a flash.
+            if (!obj || typeof obj !== 'object' || (Date.now() - (obj.t || 0)) > 86400000) {
+                return null;
+            }
+            return obj;
+        } catch (e) {
+            return null;
+        }
+    }
+    function writeCachedState(patch) {
+        try {
+            var cur = readCachedState() || {};
+            Object.keys(patch).forEach(function (k) { cur[k] = patch[k]; });
+            cur.t = Date.now();
+            window.localStorage.setItem(FPC_STATE_KEY, JSON.stringify(cur));
+        } catch (e) {}
+    }
+    // Expose so ajax-cart.js can write after add-to-cart / remove / qty change.
+    window._fpcWriteCartState = writeCachedState;
+    window._fpcReadCartState  = readCachedState;
+
+    // Apply a cart qty to the configured badge. Used both for the optimistic
+    // render (from localStorage, before fetch) and for the real response
+    // (from /fpc/dynamic/). Handles three cases:
+    //   1. Element matches the selector → update textContent + count-N class
+    //   2. No match + qty > 0 → inject a new badge inside minicartTrigger
+    //   3. No match + qty == 0 → no-op (nothing to hide, nothing to show)
+    function applyCartQtyToDom(cartQty) {
+        var cfg = getCfg();
+        var qtySelector = cfg.cartQtySelector;
+        if (!qtySelector) return;
+        var els = document.querySelectorAll(qtySelector);
+        if (els.length > 0) {
+            for (var q = 0; q < els.length; q++) {
+                var el = els[q];
+                el.textContent = String(cartQty);
+                el.className = el.className.replace(/\bcount-\d+\b/g, '').trim();
+                el.classList.add('count-' + cartQty);
+                el.style.display = cartQty > 0 ? '' : 'none';
+            }
+            return;
+        }
+        if (cartQty > 0 && cfg.minicartTrigger) {
+            var triggerEl = document.querySelector(cfg.minicartTrigger);
+            if (!triggerEl) return;
+            var tokens = qtySelector.trim().split(/\s+/);
+            var last = tokens[tokens.length - 1];
+            var badge = document.createElement('span');
+            if (last.charAt(0) === '.') {
+                var classes = last.substring(1).split('.');
+                classes.push(classes[0] + '-' + cartQty);
+                badge.className = classes.join(' ');
+            } else if (last.charAt(0) === '#') {
+                badge.id = last.substring(1);
+            }
+            badge.textContent = String(cartQty);
+            triggerEl.appendChild(badge);
+        }
+    }
+    window._fpcApplyCartQty = applyCartQtyToDom;
+
+    // ── Hook cart AJAX endpoints to keep localStorage in sync ──
+    // Maho core's minicart.js (and third-party widgets) fire AJAX calls
+    // to /checkout/cart/ajax{Add,Update,Delete} bypassing our ajax-cart.js
+    // intercept. Their JSON responses include `qty` — mirror it to
+    // localStorage + the DOM so subsequent navigations show the correct
+    // badge instantly. Hooks both fetch() and XMLHttpRequest so we catch
+    // whichever transport the caller used.
+    var CART_ENDPOINT_RE = /\/checkout\/cart\/(ajax(?:Add|Update|Delete)|add|delete|updatePost|update)(?:[/?]|$)/i;
+
+    function applyCartResponsePayload(data) {
+        if (!data || typeof data !== 'object') return;
+        var q = data.qty;
+        if (q == null) q = data.cart_qty;
+        if (typeof q !== 'number') return;
+        applyCartQtyToDom(q);
+        writeCachedState({ cart_qty: q });
+    }
+
+    // Proxy window.fetch
+    if (typeof window.fetch === 'function' && !window._fpcCartFetchHooked) {
+        window._fpcCartFetchHooked = true;
+        var origFetch = window.fetch.bind(window);
+        window.fetch = function(input, opts) {
+            var urlStr = typeof input === 'string' ? input : (input && input.url) || '';
+            var isCartCall = CART_ENDPOINT_RE.test(urlStr);
+            var p = origFetch(input, opts);
+            if (!isCartCall) return p;
+            return p.then(function(response) {
+                try {
+                    var clone = response.clone();
+                    clone.json().then(applyCartResponsePayload).catch(function(){});
+                } catch (e) {}
+                return response;
+            });
+        };
+    }
+
+    // Proxy XMLHttpRequest (for jQuery / Prototype / native XHR callers)
+    if (typeof XMLHttpRequest !== 'undefined' && !window._fpcCartXhrHooked) {
+        window._fpcCartXhrHooked = true;
+        var origOpen = XMLHttpRequest.prototype.open;
+        var origSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._fpcUrl = url;
+            return origOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function() {
+            var xhr = this;
+            if (xhr._fpcUrl && CART_ENDPOINT_RE.test(xhr._fpcUrl)) {
+                xhr.addEventListener('load', function() {
+                    if (xhr.status !== 200) return;
+                    try {
+                        applyCartResponsePayload(JSON.parse(xhr.responseText));
+                    } catch (e) {}
+                });
+            }
+            return origSend.apply(this, arguments);
+        };
+    }
+
+    // Apply cached state synchronously on script load. Runs BEFORE the
+    // /fpc/dynamic/ fetch completes so users see their known cart qty
+    // immediately instead of the stale cached-HTML value. If the element
+    // isn't in the DOM yet (loader.js is in <head>, body hasn't parsed),
+    // re-apply on DOMContentLoaded.
+    function applyOptimisticState() {
+        var cached = readCachedState();
+        if (!cached) return;
+        if (typeof cached.cart_qty === 'number') {
+            applyCartQtyToDom(cached.cart_qty);
+        }
+    }
+    applyOptimisticState();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyOptimisticState);
+    }
+
+    // Defensive helpers so loader.js works even if it loads BEFORE the
+    // base theme's app.js (which defines mahoFetch / mahoOnReady).
+    // Previously this ordering was load-ordering-dependent and would silently
+    // break the minicart/cart-count AJAX update if app.js hadn't been
+    // inlined yet. Fall back to window.fetch and DOMContentLoaded when
+    // the Maho helpers aren't available at parse time.
+    function _fpcFetch(url, opts) {
+        // Always construct an absolute URL. Maho's mahoFetch() wraps the URL
+        // in `new URL(url)` with no base — passing a relative URL throws
+        // TypeError: Invalid URL, which silently kills the caller's promise
+        // chain. Building the absolute URL here sidesteps that.
+        var absolute = url;
+        if (url.charAt(0) === '/') {
+            absolute = window.location.origin + url;
+        }
+        if (typeof window.mahoFetch === 'function') {
+            return window.mahoFetch(absolute, opts);
+        }
+        return window.fetch(absolute, { credentials: 'same-origin' }).then(function (r) {
+            return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
+        });
+    }
+    function _fpcOnReady(fn) {
+        if (typeof window.mahoOnReady === 'function') {
+            window.mahoOnReady(fn);
+        } else if (document.readyState !== 'loading') {
+            fn();
+        } else {
+            document.addEventListener('DOMContentLoaded', fn);
+        }
+    }
 
     // Measure Turbo navigation time directly.
     // turbo:visit fires when navigation starts, turbo:load when it completes.
@@ -43,6 +233,7 @@
     });
 
     function loadDynamicBlocks() {
+        var cfg = getCfg();
         var placeholders = document.querySelectorAll('[data-fpc-block]');
         var badges = {
             cart_count: document.querySelector('[data-cart-count]'),
@@ -95,9 +286,9 @@
                     : loadTime;
             }
         }
-        query += (query ? "&" : "?") + "p=" + encodeURIComponent(pathname) + "&ttfb=" + ttfb + "&lt=" + loadTime;
+        query += (query ? "&" : "?") + "p=" + encodeURIComponent(window.location.pathname) + "&ttfb=" + ttfb + "&lt=" + loadTime;
 
-        mahoFetch('/fpc/dynamic/' + query, { loaderArea: false })
+        _fpcFetch('/fpc/dynamic/' + query, { loaderArea: false })
         .then(function(data) {
             if (!data || !data.success || !data.blocks) return;
 
@@ -122,13 +313,17 @@
                 compareLink.style.cssText = compareCount > 0 ? '' : 'display:none !important';
             }
 
-            // Update cart qty elements — from admin config selector OR data attribute
+            // Update cart qty badge via shared function (same code path used
+            // by the optimistic localStorage render). Also persist the new
+            // value so the NEXT page view can render instantly without
+            // waiting for /fpc/dynamic/.
             var cartQty = data.cart_qty || 0;
-            var qtySelector = cfg.cartQtySelector || '[data-fpc-cart-qty]';
-            var cartQtyEls = document.querySelectorAll(qtySelector);
-            for (var q = 0; q < cartQtyEls.length; q++) {
-                cartQtyEls[q].textContent = String(cartQty);
-            }
+            applyCartQtyToDom(cartQty);
+            writeCachedState({
+                cart_qty:       cartQty,
+                compare_count:  data.compare_count  || 0,
+                wishlist_count: data.wishlist_count || 0,
+            });
 
             // Bind minicart AJAX refresh — from admin config selectors OR data attributes
             var triggerSel = cfg.minicartTrigger;
@@ -147,7 +342,7 @@
                     cartWrapper.addEventListener('click', function() {
                         var blockContent = document.querySelector(contentSel);
                         if (!blockContent) return;
-                        mahoFetch('/fpc/dynamic/minicart/', { loaderArea: false })
+                        _fpcFetch('/fpc/dynamic/minicart/', { loaderArea: false })
                         .then(function(html) {
                             if (html && html.trim()) {
                                 blockContent.innerHTML = html;
@@ -211,7 +406,7 @@
     });
 
     // Fallback for non-Turbo (or if Turbo hasn't loaded yet on initial page)
-    mahoOnReady(function() {
+    _fpcOnReady(function() {
         if (!initialLoaded) loadDynamicBlocks();
     });
 })();

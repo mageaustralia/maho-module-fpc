@@ -19,15 +19,24 @@ $installer->startSetup();
 $connection = $installer->getConnection();
 $tableName = $installer->getTable('mageaustralia_fpc/stats_hourly');
 
-// Remove any duplicate rows: keep the row with the highest count for each bucket
-$connection->query("
-    DELETE h1 FROM {$tableName} h1
-    INNER JOIN {$tableName} h2
-        ON h1.hour = h2.hour
-        AND h1.store_code = h2.store_code
-        AND h1.event_type = h2.event_type
-        AND h1.id < h2.id
-");
+// Remove any duplicate rows: keep the row with the highest id for each bucket.
+// Done in two steps (SELECT then DELETE WHERE IN) so it works on both
+// MySQL and PostgreSQL — MySQL-specific `DELETE alias FROM ... JOIN` syntax
+// does not parse on Postgres and breaks setup on Neon-backed installs.
+$select = $connection->select()
+    ->from(['h1' => $tableName], ['id'])
+    ->join(
+        ['h2' => $tableName],
+        'h1.hour = h2.hour'
+        . ' AND h1.store_code = h2.store_code'
+        . ' AND h1.event_type = h2.event_type'
+        . ' AND h1.id < h2.id',
+        [],
+    );
+$duplicateIds = $connection->fetchCol($select);
+if ($duplicateIds) {
+    $connection->delete($tableName, ['id IN (?)' => $duplicateIds]);
+}
 
 // Drop the old non-unique index if it exists
 $oldIdx = $installer->getIdxName('mageaustralia_fpc/stats_hourly', ['hour', 'store_code', 'event_type']);
