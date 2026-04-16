@@ -13,17 +13,17 @@ High-performance full page cache module for [Maho](https://mahocommerce.com) (PH
 > Tested on a dedicated staging server (dedicated CPU, nginx + PHP-FPM 8.4).
 > 5,000 requests, 200 concurrent users, zero failures.
 
-### FrankenPHP / Fly.io (PHP cache hit — no web server bypass)
+### FrankenPHP / Fly.io
 
-| Page | Without FPC | With FPC (PHP) | Speedup |
-|------|-------------|----------------|---------|
-| Homepage | 110ms | 75ms | 1.5x |
-| Category + Products | 303ms | 79ms | **3.8x** |
-| Product Page | 300ms | 78ms | **3.8x** |
+| Mode | Req/s (50 conn) | Avg Latency | Speedup |
+|------|----------------|-------------|---------|
+| No FPC (full PHP render) | 24 | 1,780ms | — |
+| FPC PHP cache hit (no static bypass) | 24 | 360ms | 5x latency |
+| **FPC Caddy static bypass** | **1,919** | **25ms** | **80x req/s** |
 
 > Fly.io shared-cpu-1x (512MB), Neon Postgres, Sydney region.
-> TTFB includes ~70ms network latency (test from Singapore). Actual PHP FPC hit: ~5–10ms.
-> FrankenPHP serves via PHP fallback (no static file bypass). With Caddy `try_files` or a CDN in front, these would drop to ~1ms + network latency.
+> Tested with `wrk -t4 -c50 -d10s` from a nearby server (~1ms RTT).
+> Static bypass serves cached HTML via Caddy `try_files` — PHP never runs.
 
 ## Features
 
@@ -141,7 +141,31 @@ ln -sfn /path/to/maho/var/fpc /path/to/maho/public/var/fpc
 
 ### FrankenPHP / Caddy
 
-PHP fallback handles caching automatically — no Caddyfile changes needed.
+Add to your Caddyfile **before** `php_server`:
+
+```caddy
+# Create symlink first:
+# ln -sfn /path/to/maho/var/fpc /path/to/maho/public/var/fpc
+
+@fpcBase {
+    method GET
+    not path /admin* /customer* /checkout* /cart* /wishlist* /sendfriend* /api/* /rest.php /fpc/* /media/* /skin/* /js/* /downloader* /cron.php /index.php*
+    file {
+        try_files var/fpc/{store_code}{path}index.html var/fpc/{store_code}{path}
+    }
+}
+handle @fpcBase {
+    header X-Fpc "HIT-static"
+    rewrite * {http.matchers.file.relative}
+    file_server {
+        precompressed gzip
+    }
+}
+```
+
+Replace `{store_code}` with your store code (e.g. `en`, `default`). See `deploy-examples/frankenphp/Caddyfile` for a complete working example.
+
+> **Important**: do NOT add a `query` matcher (e.g. `query !*=*`). Caddy's query matcher with wildcards silently prevents the file matcher from firing. Requests with query strings naturally fall through because parameterized cache files have `__param-val` suffixes that don't match the `{path}`-based probe.
 
 ### Apache (.htaccess)
 

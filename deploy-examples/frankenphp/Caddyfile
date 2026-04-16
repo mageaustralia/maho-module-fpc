@@ -1,0 +1,70 @@
+# Mageaustralia_Fpc — FrankenPHP / Caddy static bypass configuration
+#
+# Serves FPC-cached HTML files directly from var/fpc/ without touching PHP.
+# Requires a symlink: public/var/fpc → ../var/fpc (or absolute path to var/fpc)
+#
+# Cache key layout (written by the FPC module):
+#   URL /                         → var/fpc/{store}/index.html
+#   URL /accessories/             → var/fpc/{store}/accessories/index.html
+#   URL /product-name.html        → var/fpc/{store}/product-name.html
+#   URL /accessories/?p=2         → var/fpc/{store}/accessories/index__p-2.html (not served statically)
+#
+# The try_files matcher probes two paths:
+#   1. var/fpc/{store}{path}index.html  — for directory-style URLs (trailing slash)
+#   2. var/fpc/{store}{path}             — for file-style URLs (.html suffix)
+#
+# Requests with query strings fall through to PHP naturally because
+# parameterized cache files have __param-val suffixes that don't match
+# the {path}-based probe. No query-string matcher needed.
+#
+# Performance (Fly.io shared-cpu-1x, 512MB, Sydney):
+#   Without static bypass (PHP FPC hit):  24 req/s,  360ms avg latency
+#   With static bypass (Caddy file serve): 1,919 req/s, 25ms avg latency (80x improvement)
+
+{
+    skip_install_trust
+
+    frankenphp {
+        # Adjust worker count for your server:
+        # num_threads 4
+    }
+}
+
+:80 {
+    root * public/
+    encode zstd br gzip
+
+    # ── FPC Static Bypass ────────────────────────────────────────
+    # Change "en" to your store code (e.g. "default", "us", "de").
+    # For multi-store, duplicate the @fpcBase block per store or use
+    # a map/variable to resolve the store code from the Host header.
+    @fpcBase {
+        method GET
+        not path /admin* /customer* /checkout* /cart* /wishlist* /sendfriend* /api/* /rest.php /fpc/* /media/* /skin/* /js/* /downloader* /cron.php /index.php*
+        file {
+            try_files var/fpc/en{path}index.html var/fpc/en{path}
+        }
+    }
+    handle @fpcBase {
+        header X-Fpc "HIT-static"
+        header Cache-Control "public, no-cache, s-maxage=60, stale-while-revalidate=86400"
+        rewrite * {http.matchers.file.relative}
+        file_server {
+            precompressed gzip
+        }
+    }
+
+    # ── Static files ─────────────────────────────────────────────
+    @static {
+        file
+        not path *.php
+    }
+    handle @static {
+        file_server
+    }
+
+    # ── PHP fallback ─────────────────────────────────────────────
+    php_server {
+        index index.php
+    }
+}
