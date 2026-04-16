@@ -345,7 +345,7 @@
                         // /fpc/dynamic/minicart/ returns raw HTML (text/html),
                         // NOT JSON. Use fetch().text() directly instead of
                         // _fpcFetch which calls r.json() and would throw.
-                        var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/';
+                        var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/?referer=' + encodeURIComponent(window.location.href);
                         window.fetch(minicartUrl, { credentials: 'same-origin' })
                         .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
                         .then(function(html) {

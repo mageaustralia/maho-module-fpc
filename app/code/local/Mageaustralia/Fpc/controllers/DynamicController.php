@@ -128,7 +128,10 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
     {
         // Set the "current URL" to the referring page so that uenc in
         // remove/update links redirects back to the actual page, not this endpoint.
-        $referer = $this->getRequest()->getHeader('Referer');
+        // turbo-compat.js passes the page URL as ?referer= because browsers
+        // forbid setting the Referer header on fetch requests.
+        $referer = $this->getRequest()->getParam('referer')
+            ?: $this->getRequest()->getHeader('Referer');
         if ($referer) {
             $this->getRequest()->setParam(
                 Mage_Core_Controller_Varien_Action::PARAM_NAME_URL_ENCODED,

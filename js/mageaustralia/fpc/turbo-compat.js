@@ -102,7 +102,7 @@
             var cfg = window.FPC_CONFIG || {};
             var contentSel = cfg.minicartContent || '';
             if (contentSel) {
-                var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/';
+                var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/?referer=' + encodeURIComponent(window.location.href);
                 window.fetch(minicartUrl, { credentials: 'same-origin' })
                     .then(function (r) { return r.ok ? r.text() : ''; })
                     .then(function (html) {
