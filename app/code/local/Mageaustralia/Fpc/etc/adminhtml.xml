@@ -1,15 +1,15 @@
 <?xml version="1.0"?>
 <config>
     <menu>
-        <thirdparty>
+        <report>
             <children>
                 <fpc_stats translate="title" module="mageaustralia_fpc">
                     <title>FPC Statistics</title>
                     <action>adminhtml/fpcStats/index</action>
-                    <sort_order>50</sort_order>
+                    <sort_order>200</sort_order>
                 </fpc_stats>
             </children>
-        </thirdparty>
+        </report>
     </menu>
     <acl>
         <resources>

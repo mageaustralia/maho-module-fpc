@@ -22,6 +22,11 @@
 (function () {
     'use strict';
 
+    // Only activate when Turbo is actually loaded. Without Turbo, the base
+    // theme's initOffcanvas works fine and this script's stopImmediatePropagation
+    // would kill other click handlers (e.g. loader.js's minicart AJAX refresh).
+    if (!window._mahoTurboInit && typeof Turbo === 'undefined') return;
+
     // Track moved elements for restoration on close
     var movedElements = new Map();
 
