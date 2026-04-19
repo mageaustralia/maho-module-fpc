@@ -601,8 +601,8 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         $rollupTable = $this->getStatsHourlyTable();
         $rollupSelect = $read->select()
             ->from($rollupTable, [
-                'hits'   => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'hit' THEN `count` ELSE 0 END)"),
-                'misses' => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'miss' THEN `count` ELSE 0 END)"),
+                'hits'   => new Maho\Db\Expr(sprintf("SUM(CASE WHEN event_type = 'hit' THEN %s ELSE 0 END)", $read->quoteIdentifier('count'))),
+                'misses' => new Maho\Db\Expr(sprintf("SUM(CASE WHEN event_type = 'miss' THEN %s ELSE 0 END)", $read->quoteIdentifier('count'))),
             ])
             ->where('hour >= ?', $since)
             ->where('hour < ?', $rawCutoff);
@@ -660,7 +660,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             $rollupTable = $this->getStatsHourlyTable();
             $rawCutoff = $this->getStatsSince(24);
             $rollupSelect = $read->select()
-                ->from($rollupTable, ['cnt' => new Maho\Db\Expr('SUM(`count`)')])
+                ->from($rollupTable, ['cnt' => new Maho\Db\Expr(sprintf('SUM(%s)', $read->quoteIdentifier('count')))])
                 ->where('event_type = ?', 'flush')
                 ->where('hour >= ?', $since)
                 ->where('hour < ?', $rawCutoff);
@@ -775,13 +775,13 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
             $rollupSelect = $read->select()
                 ->from($rollupTable, [
-                    'hour'   => new Maho\Db\Expr("DATE_FORMAT(hour, '%Y-%m-%d %H:00')"),
-                    'hits'   => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'hit' THEN `count` ELSE 0 END)"),
-                    'misses' => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'miss' THEN `count` ELSE 0 END)"),
+                    'hour'   => $read->getDateFormatSql('hour', '%Y-%m-%d %H:00'),
+                    'hits'   => new Maho\Db\Expr(sprintf("SUM(CASE WHEN event_type = 'hit' THEN %s ELSE 0 END)", $read->quoteIdentifier('count'))),
+                    'misses' => new Maho\Db\Expr(sprintf("SUM(CASE WHEN event_type = 'miss' THEN %s ELSE 0 END)", $read->quoteIdentifier('count'))),
                 ])
                 ->where('hour >= ?', $since)
                 ->where('hour < ?', $rawCutoff)
-                ->group(new Maho\Db\Expr("DATE_FORMAT(hour, '%Y-%m-%d %H:00')"))
+                ->group($read->getDateFormatSql('hour', '%Y-%m-%d %H:00'))
                 ->order('hour ASC');
 
             $this->applyStoreFilter($rollupSelect, $storeCode);
@@ -801,13 +801,13 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
         $select = $read->select()
             ->from($table, [
-                'hour'   => new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"),
+                'hour'   => $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'),
                 'hits'   => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'hit' THEN 1 ELSE 0 END)"),
                 'misses' => new Maho\Db\Expr("SUM(CASE WHEN event_type = 'miss' THEN 1 ELSE 0 END)"),
             ])
             ->where('event_type IN (?)', ['hit', 'miss'])
             ->where('created_at >= ?', $rawSince)
-            ->group(new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"))
+            ->group($read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'))
             ->order('hour ASC');
 
         $this->applyStoreFilter($select, $storeCode);
@@ -866,14 +866,14 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
             $rollupSelect = $read->select()
                 ->from($rollupTable, [
-                    'hour'      => new Maho\Db\Expr("DATE_FORMAT(hour, '%Y-%m-%d %H:00')"),
+                    'hour'      => $read->getDateFormatSql('hour', '%Y-%m-%d %H:00'),
                     'avg_ttfb'  => new Maho\Db\Expr('AVG(avg_ttfb)'),
                     'p95_ttfb'  => new Maho\Db\Expr('MAX(p95_ttfb)'),
                 ])
                 ->where('hour >= ?', $since)
                 ->where('hour < ?', $rawCutoff)
                 ->where('avg_ttfb IS NOT NULL')
-                ->group(new Maho\Db\Expr("DATE_FORMAT(hour, '%Y-%m-%d %H:00')"))
+                ->group($read->getDateFormatSql('hour', '%Y-%m-%d %H:00'))
                 ->order('hour ASC');
 
             $this->applyStoreFilter($rollupSelect, $storeCode);
@@ -893,7 +893,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
 
         $select = $read->select()
             ->from($table, [
-                'hour'     => new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"),
+                'hour'     => $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'),
                 'avg_ttfb' => new Maho\Db\Expr('AVG(ttfb_ms)'),
                 'p95_ttfb' => new Maho\Db\Expr('CAST(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ttfb_ms) AS UNSIGNED)'),
             ])
@@ -901,7 +901,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             ->where('ttfb_ms IS NOT NULL')
             ->where('ttfb_ms > 0')
             ->where('created_at >= ?', $rawSince)
-            ->group(new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"))
+            ->group($read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'))
             ->order('hour ASC');
 
         $this->applyStoreFilter($select, $storeCode);
@@ -913,7 +913,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             // Fallback: use MAX as rough p95 proxy
             $select = $read->select()
                 ->from($table, [
-                    'hour'     => new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"),
+                    'hour'     => $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'),
                     'avg_ttfb' => new Maho\Db\Expr('AVG(ttfb_ms)'),
                     'p95_ttfb' => new Maho\Db\Expr('MAX(ttfb_ms)'),
                 ])
@@ -921,7 +921,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
                 ->where('ttfb_ms IS NOT NULL')
                 ->where('ttfb_ms > 0')
                 ->where('created_at >= ?', $rawSince)
-                ->group(new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00')"))
+                ->group($read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'))
                 ->order('hour ASC');
 
             $this->applyStoreFilter($select, $storeCode);
@@ -1018,7 +1018,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         // Aggregate: group by hour + store_code + event_type
         $select = $read->select()
             ->from($rawTable, [
-                'hour'       => new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')"),
+                'hour'       => $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00:00'),
                 'store_code' => 'store_code',
                 'event_type' => 'event_type',
                 'url_path'   => new Maho\Db\Expr("''"),
@@ -1029,7 +1029,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
                 'p95_ttfb'   => new Maho\Db\Expr('MAX(ttfb_ms)'), // Approximation
             ])
             ->where('created_at < ?', $cutoff)
-            ->group(['event_type', 'store_code', new Maho\Db\Expr("DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')")]);
+            ->group(['event_type', 'store_code', $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00:00')]);
 
         $rows = $read->fetchAll($select);
 
