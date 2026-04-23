@@ -1,5 +1,8 @@
 # Mageaustralia_Fpc — Full Page Cache + Turbo Drive for Maho
 
+[![CI](https://github.com/mageaustralia/maho-module-fpc/actions/workflows/ci.yml/badge.svg)](https://github.com/mageaustralia/maho-module-fpc/actions/workflows/ci.yml)
+[![License: OSL-3.0](https://img.shields.io/badge/license-OSL--3.0-blue.svg)](LICENSE)
+
 High-performance full page cache module for [Maho](https://mahocommerce.com) (PHP 8.3+). Serves cached pages as static HTML files — bypassing PHP entirely when served by nginx. Includes Hotwire Turbo Drive for instant client-side navigation.
 
 ## Performance
