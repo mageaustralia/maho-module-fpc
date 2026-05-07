@@ -26,6 +26,7 @@ class Mageaustralia_Fpc_Adminhtml_System_Config_FpcController extends Mage_Admin
     /**
      * Flush the full page cache and redirect back to config.
      */
+    #[\Maho\Config\Route('/admin/system_config_fpc/flush')]
     public function flushAction(): void
     {
         if (!$this->getRequest()->isPost()) {
