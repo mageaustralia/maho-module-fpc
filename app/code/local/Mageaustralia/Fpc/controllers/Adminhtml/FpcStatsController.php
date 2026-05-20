@@ -13,6 +13,8 @@ class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Cont
 {
     public const ADMIN_RESOURCE = 'mageaustralia/fpc_stats';
 
+    #[\Maho\Config\Route('/fpc/adminhtml_fpcstats', name: 'fpc.adminhtml_fpcstats')]
+    #[\Maho\Config\Route('/fpc/adminhtml_fpcstats/index', name: 'fpc.adminhtml_fpcstats.index')]
     #[\Maho\Config\Route('/admin/fpcStats/index')]
     public function indexAction(): void
     {

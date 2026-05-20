@@ -250,15 +250,6 @@
         </routers>
     </admin>
     <frontend>
-        <routers>
-            <fpc>
-                <use>standard</use>
-                <args>
-                    <module>Mageaustralia_Fpc</module>
-                    <frontName>fpc</frontName>
-                </args>
-            </fpc>
-        </routers>
         <layout>
             <updates>
                 <mageaustralia_fpc>
@@ -314,7 +305,7 @@ srsltid</miss_uri_params>
                 <gzip_only>0</gzip_only>
                 <flush_on_product_save>1</flush_on_product_save>
                 <flush_on_stock_change>1</flush_on_stock_change>
-                <refresh_actions></refresh_actions>
+                <refresh_actions/>
                 <turbo_enabled>1</turbo_enabled>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
@@ -323,15 +314,15 @@ srsltid</miss_uri_params>
                 <warmup_enabled>0</warmup_enabled>
                 <warmup_batch_size>200</warmup_batch_size>
                 <warmup_delay_ms>100</warmup_delay_ms>
-                <warmup_sitemap_path></warmup_sitemap_path>
-                <warmup_basic_auth></warmup_basic_auth>
+                <warmup_sitemap_path/>
+                <warmup_basic_auth/>
                 <reset_remove_selectors>.mfp-bg, .mfp-wrap, .modal-backdrop, .aa-DetachedOverlay, .meilisearch-autocomplete</reset_remove_selectors>
                 <reset_close_selectors>.meilisearch-autocomplete.open</reset_close_selectors>
                 <reset_body_classes>modal-open, no-scroll, overflow-hidden, mfp-zoom-out-cur</reset_body_classes>
                 <reset_clear_inputs>.meilisearch-search-input</reset_clear_inputs>
                 <reset_clone_selectors>.meilisearch-search-input</reset_clone_selectors>
                 <reset_dispatch_escape>1</reset_dispatch_escape>
-                <warmup_schedule></warmup_schedule>
+                <warmup_schedule/>
                 <stats_enabled>0</stats_enabled>
                 <stats_retention_days>30</stats_retention_days>
                 <stats_rollup_retention_days>90</stats_rollup_retention_days>

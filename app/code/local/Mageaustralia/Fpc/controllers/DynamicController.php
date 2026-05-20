@@ -27,6 +27,8 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
     /**
      * Render requested dynamic blocks and return as JSON.
      */
+    #[\Maho\Config\Route('/fpc/dynamic', name: 'fpc.dynamic')]
+    #[\Maho\Config\Route('/fpc/dynamic/index', name: 'fpc.dynamic.index')]
     public function indexAction(): void
     {
         // Log FPC cache hit for stats tracking
@@ -124,6 +126,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
      *
      * GET /fpc/dynamic/minicart
      */
+    #[\Maho\Config\Route('/fpc/dynamic/minicart', name: 'fpc.dynamic.minicart')]
     public function minicartAction(): void
     {
         // Set the "current URL" to the referring page so that uenc in
