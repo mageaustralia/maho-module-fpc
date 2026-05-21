@@ -23,9 +23,10 @@ rm -f /app/app/etc/local.xml
 
 # --- DB config from env vars ---
 # Neon connection string: postgres://user:pass@host/dbname?sslmode=require
-PG_HOST="${PG_HOST:-YOUR-ENDPOINT.aws.neon.tech}"
+# Set these as Fly.io secrets (`fly secrets set PG_PASS=...`), never hardcode them.
+PG_HOST="${PG_HOST:?Set PG_HOST to your Neon endpoint host}"
 PG_USER="${PG_USER:-neondb_owner}"
-PG_PASS="${PG_PASS:-REDACTED-ROTATE-IN-NEON}"
+PG_PASS="${PG_PASS:?Set PG_PASS to your Neon password (do not commit it)}"
 PG_DBNAME="${PG_DBNAME:-neondb}"
 PG_SSLMODE="${PG_SSLMODE:-require}"
 
