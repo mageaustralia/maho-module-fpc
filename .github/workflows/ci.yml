@@ -8,3 +8,6 @@ on:
 jobs:
   checks:
     uses: mageaustralia/maho-ci/.github/workflows/module-checks.yml@main
+
+  full:
+    uses: mageaustralia/maho-ci/.github/workflows/full-checks.yml@main
