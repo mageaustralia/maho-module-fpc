@@ -430,6 +430,26 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     }
 
     /**
+     * Conventional cookie that opts a session out of FPC entirely (save + serve).
+     *
+     * Any module can set this cookie to force fully-dynamic rendering for the
+     * current visitor without coupling to FPC internals, e.g. an admin
+     * impersonating a customer ("Login as Customer") who must always see a
+     * live, per-session page. Mirrors Magento's well-known EXTERNAL_NO_CACHE.
+     *
+     * NOTE: the PHP layer honours this on the cache-hit fallback and the
+     * cache-save path. The nginx try_files static-serve path bypasses PHP for
+     * bare URLs, so the shipped nginx map must also skip cache when this cookie
+     * is present (see deploy-examples/nginx/fpc.conf).
+     */
+    public const NO_CACHE_COOKIE = 'EXTERNAL_NO_CACHE';
+
+    public function hasNoCacheCookie(): bool
+    {
+        return !empty($_COOKIE[self::NO_CACHE_COOKIE]);
+    }
+
+    /**
      * Check if the current user is a logged-in admin.
      */
     public function isAdminLoggedIn(): bool

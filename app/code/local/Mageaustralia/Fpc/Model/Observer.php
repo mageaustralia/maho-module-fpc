@@ -54,8 +54,8 @@ class Mageaustralia_Fpc_Model_Observer
         $request = $front->getRequest();
         $response = $front->getResponse();
 
-        // Never cache POST, admin, no_cache, or requests with unknown query params
-        if ($helper->isPostRequest() || $helper->hasNoCacheParam() || $helper->isAdminLoggedIn()) {
+        // Never cache POST, admin, no_cache, no-cache cookie, or unknown query params
+        if ($helper->isPostRequest() || $helper->hasNoCacheParam() || $helper->hasNoCacheCookie() || $helper->isAdminLoggedIn()) {
             return;
         }
         if ($helper->hasUnknownQueryParams($request)) {
@@ -141,7 +141,7 @@ class Mageaustralia_Fpc_Model_Observer
             return;
         }
 
-        if ($helper->isPostRequest() || $helper->hasNoCacheParam() || $helper->isAdminLoggedIn()) {
+        if ($helper->isPostRequest() || $helper->hasNoCacheParam() || $helper->hasNoCacheCookie() || $helper->isAdminLoggedIn()) {
             return;
         }
         if ($helper->hasUnknownQueryParams()) {
