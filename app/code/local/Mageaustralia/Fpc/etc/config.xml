@@ -277,7 +277,6 @@ blog_index_view</cache_actions>
 compare_count:[data-compare-count]:text
 wishlist_count:[data-wishlist-count]:text
 account_links:[data-fpc-block="account_links"]:html
-header_account:[data-fpc-block="header_account"]:html
 messages:[data-fpc-block="messages"]:html</dynamic_blocks>
                 <bypass_handles>checkout_cart_index
 checkout_onepage_index
