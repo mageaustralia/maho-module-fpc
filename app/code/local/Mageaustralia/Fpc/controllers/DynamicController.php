@@ -77,7 +77,10 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
             }
         }
 
-        // Collect session messages
+        // Collect session messages — extractAll() calls getMessages(true)
+        // on each registered namespace which empties the in-memory message
+        // collection (Mage's _data['messages'] is a reference into $_SESSION
+        // under Symfony's session handler, so the mutation IS visible).
         /** @var Mageaustralia_Fpc_Model_Ajax_Message_Storage $messageStorage */
         $messageStorage = Mage::getModel('mageaustralia_fpc/ajax_message_storage');
         $messages = $messageStorage->extractAll();
@@ -88,9 +91,22 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
         // Get form key and force-persist to session file
         $formKey = Mage::getSingleton('core/session')->getFormKey();
 
+        // Force the cleared message state to land on disk BEFORE the response
+        // goes out. Without this, PHP's auto-shutdown session_write_close runs
+        // after the client has already fired the next /fpc/dynamic poll, which
+        // reads the still-populated messages and the client renders them again,
+        // piling up across polls. session_write_close() also closes write access
+        // for the rest of this request, but the form_key shutdown_function below
+        // writes the file directly so it's unaffected.
+        session_write_close();
+
         // Maho uses Symfony session handler which doesn't always persist
         // $_SESSION mutations made through Maho's namespace references.
-        // Write directly to session file after close as a workaround.
+        // Write directly to session file after close as a workaround for
+        // the form_key (the session-write-close above persisted everything
+        // EXCEPT the form_key freshly minted by getFormKey() — that one was
+        // added to $_SESSION just before the close but not via a mutation
+        // Symfony recognises, so it didn't end up serialised).
         $sessionId = session_id();
         register_shutdown_function(function () use ($sessionId, $formKey) {
             $path = Mage::getBaseDir('session') . '/sess_' . $sessionId;

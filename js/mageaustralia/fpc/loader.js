@@ -29,6 +29,34 @@
 (function () {
     'use strict';
 
+    // Re-execute <script> tags inside an element after innerHTML insertion.
+    // Browsers PARSE script HTML inserted that way but skip EXECUTION (a
+    // security boundary). Walking the freshly-set DOM, cloning each <script>
+    // into a real script element, and replacing it in place forces the
+    // browser to execute as if the script had been part of the original
+    // page load.
+    //
+    // Without this, any inline initialiser shipped inside a dynamic block
+    // template silently no-ops. Concrete consequences from the field:
+    // VarienForm('header-login-form') never wires the header login form;
+    // SocialLogin's passwordless block's initRoot() never binds the magic
+    // link and SMS OTP button click handlers — they render but do nothing.
+    function executeInjectedScripts(container) {
+        if (!container) return;
+        var scripts = container.querySelectorAll('script');
+        for (var i = 0; i < scripts.length; i++) {
+            var oldScript = scripts[i];
+            var newScript = document.createElement('script');
+            // Preserve attributes so type=module / src / nonce are honoured
+            for (var k = 0; k < oldScript.attributes.length; k++) {
+                var a = oldScript.attributes[k];
+                newScript.setAttribute(a.name, a.value);
+            }
+            if (oldScript.textContent) newScript.textContent = oldScript.textContent;
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        }
+    }
+
     // NOTE: we do NOT cache `window.FPC_CONFIG` at parse time. The fpc.config
     // inline script is emitted by Mage_Page_Block_Html_Head AFTER all addJs
     // scripts — so at the moment loader.js is parsed, FPC_CONFIG doesn't
@@ -292,12 +320,16 @@
         .then(function(data) {
             if (!data || !data.success || !data.blocks) return;
 
-            // Replace [data-fpc-block] placeholders with block HTML
+            // Replace [data-fpc-block] placeholders with block HTML.
+            // executeInjectedScripts re-runs any inline initialisers the
+            // template ships — innerHTML alone parses <script> tags but
+            // never executes them.
             var currentPlaceholders = document.querySelectorAll('[data-fpc-block]');
             for (var j = 0; j < currentPlaceholders.length; j++) {
                 var blockName = currentPlaceholders[j].getAttribute('data-fpc-block');
                 if (blockName && data.blocks[blockName] !== undefined) {
                     currentPlaceholders[j].innerHTML = data.blocks[blockName];
+                    executeInjectedScripts(currentPlaceholders[j]);
                 }
             }
 
@@ -351,6 +383,7 @@
                         .then(function(html) {
                             if (html && html.trim()) {
                                 blockContent.innerHTML = html;
+                                executeInjectedScripts(blockContent);
                             }
                         })
                         .catch(function() {});
