@@ -628,52 +628,98 @@ class Mageaustralia_Fpc_Model_Observer
         $blocks = $this->getHelper()->getDynamicBlocks();
 
         foreach ($blocks as $name => $config) {
-            $selector = $config['selector'];
-
-            // Convert CSS selector to regex for element matching
-            $pattern = $this->selectorToPattern($selector);
-            if ($pattern === null) {
+            $openPattern = $this->selectorToOpenPattern($config['selector']);
+            if ($openPattern === null) {
                 continue;
             }
 
-            // Replace the element's content with a placeholder
-            $replacement = '<div data-fpc-block="' . $name . '"></div>';
+            // Locate the block element's OPENING tag only.
+            if (!preg_match($openPattern, $html, $m, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+            $openTag = $m[0][0];
+            $openEnd = $m[0][1] + strlen($openTag);
 
-            $html = preg_replace(
-                $pattern,
-                '$1' . $replacement . '$3',
-                $html,
-                1, // Only replace first match
-            ) ?? $html;
+            // Tag name of the matched element (e.g. "div").
+            if (!preg_match('/^<([a-z][a-z0-9]*)/i', $openTag, $tm)) {
+                continue;
+            }
+            $tagName = strtolower($tm[1]);
+
+            // Find the element's OWN matching close tag by depth-counting
+            // same-name tags. The previous implementation matched (.*?) up to
+            // the FIRST "</...>", which for a nested block (e.g. a header
+            // account dropdown) deleted nested opening <div>/<form> tags while
+            // leaving their closing tags orphaned further down — unbalancing
+            // the surrounding markup and ejecting sibling <li>s out of their
+            // <ul> on cached hits. Balanced matching removes the element
+            // cleanly.
+            $closeStart = $this->findMatchingCloseTag($html, $openEnd, $tagName);
+            if ($closeStart === null) {
+                continue;
+            }
+
+            // Keep the element's own opening AND closing tags — preserving its
+            // class / style / data-fpc-block attributes (so e.g. a dropdown
+            // stays display:none and positioned) — and empty ONLY its inner
+            // content. The AJAX loader re-fills it client-side.
+            $html = substr($html, 0, $openEnd) . substr($html, $closeStart);
         }
 
         return $html;
     }
 
     /**
-     * Convert a simple CSS selector to a regex pattern.
+     * Build a regex matching ONLY the opening tag for a simple selector.
      *
-     * Supports: #id, .class, [data-attr]
-     * Returns a pattern with 3 groups: (opening tag)(content)(closing tag)
+     * Supports #id, .class, [data-attr]. Returns null for unsupported input.
      */
-    private function selectorToPattern(string $selector): ?string
+    private function selectorToOpenPattern(string $selector): ?string
     {
         if (str_starts_with($selector, '#')) {
-            // ID selector: #some-id
             $id = preg_quote(substr($selector, 1), '/');
-            return '/(<[^>]+\bid=["\']' . $id . '["\'][^>]*>)(.*?)(<\/[a-z]+>)/si';
+            return '/<[^>]+\bid=["\']' . $id . '["\'][^>]*>/si';
         }
 
         if (str_starts_with($selector, '.')) {
-            // Class selector: .some-class
             $class = preg_quote(substr($selector, 1), '/');
-            return '/(<[^>]+\bclass=["\'][^"\']*\b' . $class . '\b[^"\']*["\'][^>]*>)(.*?)(<\/[a-z]+>)/si';
+            return '/<[^>]+\bclass=["\'][^"\']*\b' . $class . '\b[^"\']*["\'][^>]*>/si';
         }
 
         if (str_starts_with($selector, '[') && str_ends_with($selector, ']')) {
-            // Attribute selector: [data-cart-count]
             $attr = preg_quote(substr($selector, 1, -1), '/');
-            return '/(<[^>]+\b' . $attr . '(?:=["\'][^"\']*["\'])?[^>]*>)(.*?)(<\/[a-z]+>)/si';
+            return '/<[^>]+\b' . $attr . '(?:=["\'][^"\']*["\'])?[^>]*>/si';
+        }
+
+        return null;
+    }
+
+    /**
+     * Return the byte offset of the close tag that balances the element of
+     * $tagName opened at $offset, honouring nested same-name tags. Returns null
+     * when no balanced close is found (leaves the block untouched).
+     */
+    private function findMatchingCloseTag(string $html, int $offset, string $tagName): ?int
+    {
+        $q = preg_quote($tagName, '/');
+        $pattern = '/<' . $q . '\b[^>]*>|<\/' . $q . '\s*>/i';
+        if (!preg_match_all($pattern, $html, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER, $offset)) {
+            return null;
+        }
+
+        $depth = 1;
+        foreach ($matches as $mm) {
+            $tok = $mm[0][0];
+            if (str_starts_with($tok, '</')) {
+                $depth--;
+            } elseif (str_ends_with($tok, '/>')) {
+                continue; // self-closing — no depth change
+            } else {
+                $depth++;
+            }
+            if ($depth === 0) {
+                return $mm[0][1];
+            }
         }
 
         return null;
