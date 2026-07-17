@@ -88,43 +88,28 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
         /** @var Mageaustralia_Fpc_Model_Ajax_Core $ajaxCore */
         $ajaxCore = Mage::getModel('mageaustralia_fpc/ajax_core');
 
-        // Get form key and force-persist to session file
+        // Mint (or read) the form key. This writes _form_key into the core
+        // session namespace ($_SESSION['core']). It MUST be persisted to the
+        // session store so the form_key handed back below matches the one
+        // Mage::getSingleton('core/session')->getFormKey() returns on the
+        // subsequent add-to-cart / login POST.
         $formKey = Mage::getSingleton('core/session')->getFormKey();
 
-        // Force the cleared message state to land on disk BEFORE the response
-        // goes out. Without this, PHP's auto-shutdown session_write_close runs
-        // after the client has already fired the next /fpc/dynamic poll, which
-        // reads the still-populated messages and the client renders them again,
-        // piling up across polls. session_write_close() also closes write access
-        // for the rest of this request, but the form_key shutdown_function below
-        // writes the file directly so it's unaffected.
-        session_write_close();
-
-        // Maho uses Symfony session handler which doesn't always persist
-        // $_SESSION mutations made through Maho's namespace references.
-        // Write directly to session file after close as a workaround for
-        // the form_key (the session-write-close above persisted everything
-        // EXCEPT the form_key freshly minted by getFormKey() — that one was
-        // added to $_SESSION just before the close but not via a mutation
-        // Symfony recognises, so it didn't end up serialised).
-        $sessionId = session_id();
-        register_shutdown_function(function () use ($sessionId, $formKey) {
-            $path = Mage::getBaseDir('session') . '/sess_' . $sessionId;
-            if (!is_file($path)) {
-                return;
-            }
-            $data = file_get_contents($path);
-            if ($data === false || str_contains($data, '_form_key')) {
-                return;
-            }
-            // Inject _form_key into the core namespace
-            $data = str_replace(
-                'core|a:1:{s:8:"messages"',
-                'core|a:2:{s:9:"_form_key";s:16:"' . $formKey . '";s:8:"messages"',
-                $data,
-            );
-            file_put_contents($path, $data, LOCK_EX);
-        });
+        // Commit the session NOW, before the JSON response is flushed to the
+        // client. Two reasons:
+        //   1. Message flush: extractAll() above cleared the flash messages from
+        //      $_SESSION; persisting here guarantees the next /fpc/dynamic poll
+        //      does not re-read and re-render stale messages.
+        //   2. Form key: persists the freshly-minted _form_key so cold sessions
+        //      (visitor landing on an nginx-static FPC page, no PHP session yet)
+        //      get a form_key that actually matches on the next POST.
+        // This relies on the session still being WRITE-OPEN at this point. The
+        // storefront "release session for read requests" observer explicitly
+        // skips the 'fpc' module for exactly this reason — see
+        // Mageaustralia_Storefront_Model_Observer::releaseSessionForReadRequest().
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
 
         $this->sendJson([
             'success'        => true,
