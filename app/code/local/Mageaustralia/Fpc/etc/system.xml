@@ -397,6 +397,29 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </warmup_enabled>
+                        <warmup_requeue translate="label comment">
+                            <label>Re-warm Purged URLs</label>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/warmup_requeue</config_path>
+                            <sort_order>15</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                            <comment><![CDATA[When a save purges specific pages (a CMS page, product or category), queue those exact URLs to be re-cached on the next warmup cron run. Without this, a targeted purge leaves a gap until the next full warmup and the next visitor pays for the miss. Requires Enable Cache Warmup.]]></comment>
+                        </warmup_requeue>
+                        <warmup_requeue_stores translate="label comment">
+                            <label>Re-warm Scope (store views)</label>
+                            <frontend_type>multiselect</frontend_type>
+                            <source_model>adminhtml/system_config_source_store</source_model>
+                            <config_path>system/fpc/warmup_requeue_stores</config_path>
+                            <sort_order>16</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                            <depends><warmup_requeue>1</warmup_requeue></depends>
+                            <comment><![CDATA[Which store views to re-warm after a purge. <strong>Leave empty for all active stores</strong>, which matches the purge itself (a purge clears every store's cache). Select specific views if some stores should not be crawled — e.g. a POS or staging-only view. Store views sharing a base URL are de-duplicated, so selecting both costs nothing.]]></comment>
+                        </warmup_requeue_stores>
                         <warmup_batch_size translate="label comment">
                             <label>URLs Per Cron Run</label>
                             <comment>Maximum URLs to warm per cron execution (runs every minute). Large sitemaps are spread across multiple runs.</comment>
@@ -439,7 +462,7 @@
                         </warmup_basic_auth>
                         <warmup_schedule translate="label comment">
                             <label>Scheduled Warmup (Cron)</label>
-                            <comment><![CDATA[Optional cron expression to run warmup on a schedule (e.g. <code>0 */6 * * *</code> for every 6 hours). Leave empty to only warm after flushes. Only re-crawls URLs whose cache files are older than the cache lifetime.]]></comment>
+                            <comment><![CDATA[Optional cron expression to run warmup on a schedule (e.g. <code>0 */6 * * *</code> for every 6 hours). Leave empty to only warm after flushes. Note: this samples a few cached pages and, if they look stale, re-crawls the whole sitemap - it is not a per-URL freshness check.]]></comment>
                             <frontend_type>text</frontend_type>
                             <config_path>system/fpc/warmup_schedule</config_path>
                             <sort_order>60</sort_order>

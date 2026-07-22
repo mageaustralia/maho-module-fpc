@@ -161,7 +161,10 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getRecentFlushes(): array
     {
-        return $this->getFpcHelper()->getRecentFlushes(15, $this->getPeriodHours(), $this->getStoreFilter());
+        return $this->localiseRows(
+            $this->getFpcHelper()->getRecentFlushes(15, $this->getPeriodHours(), $this->getStoreFilter()),
+            'created_at',
+        );
     }
 
     /**
@@ -169,7 +172,10 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getHourlyStats(): array
     {
-        return $this->getFpcHelper()->getHourlyStats($this->getPeriodHours(), $this->getStoreFilter());
+        return $this->localiseRows(
+            $this->getFpcHelper()->getHourlyStats($this->getPeriodHours(), $this->getStoreFilter()),
+            'hour',
+        );
     }
 
     /**
@@ -177,7 +183,63 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
      */
     public function getHourlyTtfb(): array
     {
-        return $this->getFpcHelper()->getHourlyTtfb($this->getPeriodHours(), $this->getStoreFilter());
+        return $this->localiseRows(
+            $this->getFpcHelper()->getHourlyTtfb($this->getPeriodHours(), $this->getStoreFilter()),
+            'hour',
+        );
+    }
+
+    /**
+     * Convert one datetime column of a result set from UTC to the configured timezone.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function localiseRows(array $rows, string $column): array
+    {
+        foreach ($rows as &$row) {
+            if (isset($row[$column]) && is_string($row[$column]) && $row[$column] !== '') {
+                $row[$column] = $this->toLocalTime($row[$column]);
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * UTC datetime string from the stats tables, in the store's configured timezone.
+     *
+     * Stats are recorded in UTC (PHP runs UTC here) but the dashboard sliced the hour
+     * straight out of the raw string - substr($bucket['hour'], 11, 5) - so every chart
+     * label, axis tick and tooltip read UTC. Under Australia/Melbourne that put the most
+     * recent bucket ten hours behind the wall clock.
+     *
+     * Converting here rather than in the template fixes the axis labels, the tooltips and
+     * the flush list in one place, since all three read the same rows.
+     *
+     * Bucket boundaries stay aligned because Australian eastern offsets are whole hours; a
+     * half-hour zone (Adelaide, +9:30) would legitimately render :30 ticks.
+     */
+    private function toLocalTime(string $utc): string
+    {
+        static $tz = null;
+
+        if ($tz === null) {
+            $configured = (string) Mage::getStoreConfig(Mage_Core_Model_Locale::XML_PATH_DEFAULT_TIMEZONE);
+            try {
+                $tz = new DateTimeZone($configured !== '' ? $configured : 'UTC');
+            } catch (Exception $e) {
+                $tz = new DateTimeZone('UTC');
+            }
+        }
+
+        try {
+            $dt = new DateTime($utc, new DateTimeZone('UTC'));
+        } catch (Exception $e) {
+            return $utc; // unparseable - show it as stored rather than lose the row
+        }
+
+        $dt->setTimezone($tz);
+        return $dt->format('Y-m-d H:i:s');
     }
 
     /**

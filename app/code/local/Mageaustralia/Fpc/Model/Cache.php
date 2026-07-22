@@ -159,6 +159,45 @@ class Mageaustralia_Fpc_Model_Cache
      *
      * @param string[] $paths Relative URL paths (e.g. "shoes.html")
      */
+    /**
+     * Absolute URLs to re-warm for the given paths, one per active store.
+     *
+     * Deliberately independent of whether a store currently has a cache directory. The
+     * first version built this inside the purge loop, after the is_dir() guard, so nothing
+     * was ever queued when the cache was cold - which is precisely when warming matters
+     * most, and is the state immediately after a full flush.
+     *
+     * Uses the path as given, before the .html cache-filename normalisation: the cache file
+     * is an implementation detail, the warmer needs the address a browser would request.
+     *
+     * @param string[] $paths
+     * @return string[]
+     */
+    private function collectWarmUrls(array $paths): array
+    {
+        $urls = [];
+
+        // Empty (the default) means every active store, matching the purge - which clears
+        // all stores' caches. A selection narrows it, for views that should not be crawled.
+        $selected = trim((string) Mage::getStoreConfig('system/fpc/warmup_requeue_stores'));
+        $allowed = $selected === '' ? null : array_filter(explode(',', $selected), static fn(string $id): bool => $id !== '');
+
+        foreach (Mage::app()->getStores() as $store) {
+            if (!$store->getIsActive()) {
+                continue;
+            }
+            if ($allowed !== null && !in_array((string) $store->getId(), $allowed, true)) {
+                continue;
+            }
+            $storeBaseUrl = rtrim($store->getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB), '/');
+            foreach ($paths as $rawPath) {
+                $urls[] = $storeBaseUrl . '/' . trim((string) $rawPath, '/');
+            }
+        }
+
+        return $urls;
+    }
+
     public function purgeByPaths(array $paths): void
     {
         if ($paths === []) {
@@ -166,6 +205,9 @@ class Mageaustralia_Fpc_Model_Cache
         }
 
         $fpcDir = $this->helper->getFpcDir();
+        $requeue = Mage::getStoreConfigFlag('system/fpc/warmup_requeue')
+            && Mage::getStoreConfigFlag('system/fpc/warmup_enabled');
+        $toWarm = $requeue ? $this->collectWarmUrls($paths) : [];
 
         foreach (Mage::app()->getStores() as $store) {
             $storeCode = $store->getCode();
@@ -226,6 +268,10 @@ class Mageaustralia_Fpc_Model_Cache
         }
 
         $this->purgeAdapter->purgeUrls($paths);
+
+        if ($toWarm !== []) {
+            Mage::getSingleton('mageaustralia_fpc/warmup')->enqueue($toWarm);
+        }
     }
 
     /**

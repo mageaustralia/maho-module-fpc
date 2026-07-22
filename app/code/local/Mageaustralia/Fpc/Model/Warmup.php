@@ -21,6 +21,8 @@ class Mageaustralia_Fpc_Model_Warmup
 {
     private const FLAG_FILE = '.warmup_pending';
     private const STATE_FILE = '.warmup_state';
+    private const QUEUE_FILE = '.warmup_queue.json';
+    private const QUEUE_MAX = 500;
     private const LOG_FILE = 'fpc_warmup.log';
 
     /**
@@ -110,6 +112,14 @@ class Mageaustralia_Fpc_Model_Warmup
      */
     public function runBatch(): int
     {
+        // Queued URLs are warmed even when no full warmup is pending - that is the whole
+        // point of the requeue: a targeted purge should be repaired without triggering a
+        // full sitemap crawl.
+        $queued = $this->runQueueBatch($this->getMaxUrlsPerRun(), $this->getDelayMs());
+        if ($queued !== null) {
+            return $queued;
+        }
+
         if (!$this->isPending()) {
             return 0;
         }
@@ -333,6 +343,100 @@ class Mageaustralia_Fpc_Model_Warmup
         return max(0, $delay);
     }
 
+    /**
+     * Add URLs to the priority warm queue.
+     *
+     * Targeted purges (a CMS page save, a product save) previously left a hole in the cache
+     * that nothing refilled: warmup only ran after a FULL flush, or when the stale sampler
+     * happened to trip. So saving the homepage meant the next visitor paid for the miss.
+     *
+     * Queued URLs are warmed ahead of the sitemap sweep, so a purge is followed within a
+     * minute by a re-cache of exactly the pages that were dropped - not a full re-crawl.
+     *
+     * @param string[] $urls
+     */
+    public function enqueue(array $urls): void
+    {
+        if ($urls === []) {
+            return;
+        }
+
+        $dir = $this->getFpcDir();
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        $existing = $this->loadQueue();
+        // Deduplicate: a save that purges the same path twice should warm it once.
+        $merged = array_values(array_unique(array_merge($existing, array_values($urls))));
+
+        // Bound the queue. A bulk import can purge thousands of paths; past this point the
+        // sitemap sweep is the cheaper way to recover, and an unbounded file would grow
+        // without limit.
+        if (count($merged) > self::QUEUE_MAX) {
+            $merged = array_slice($merged, 0, self::QUEUE_MAX);
+        }
+
+        file_put_contents($this->getQueuePath(), json_encode($merged), LOCK_EX);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function loadQueue(): array
+    {
+        $path = $this->getQueuePath();
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        return is_array($data) ? array_values(array_filter($data, 'is_string')) : [];
+    }
+
+    /**
+     * @param string[] $remaining
+     */
+    private function saveQueue(array $remaining): void
+    {
+        if ($remaining === []) {
+            @unlink($this->getQueuePath());
+            return;
+        }
+        file_put_contents($this->getQueuePath(), json_encode(array_values($remaining)), LOCK_EX);
+    }
+
+    /**
+     * Warm queued URLs. Returns the number warmed, or null when the queue was empty and the
+     * caller should fall through to the sitemap sweep.
+     */
+    private function runQueueBatch(int $maxPerRun, int $delayMs): ?int
+    {
+        $queue = $this->loadQueue();
+        if ($queue === []) {
+            return null;
+        }
+
+        $batch = array_slice($queue, 0, $maxPerRun);
+        $basicAuth = $this->getBasicAuth();
+        $warmed = 0;
+
+        foreach ($batch as $url) {
+            if ($this->warmUrl($url, $basicAuth)) {
+                $warmed++;
+            }
+            if ($delayMs > 0) {
+                usleep($delayMs * 1000);
+            }
+        }
+
+        // Drop the batch whether or not each URL succeeded - a URL that 404s must not wedge
+        // the queue and block everything behind it.
+        $this->saveQueue(array_slice($queue, count($batch)));
+        $this->log(sprintf('Requeue: warmed %d/%d, %d left', $warmed, count($batch), max(0, count($queue) - count($batch))));
+
+        return $warmed;
+    }
+
     // ── State Management ────────────────────────────────────────────
 
     private function loadState(): array
@@ -372,6 +476,11 @@ class Mageaustralia_Fpc_Model_Warmup
     private function getStatePath(): string
     {
         return $this->getFpcDir() . DS . self::STATE_FILE;
+    }
+
+    private function getQueuePath(): string
+    {
+        return $this->getFpcDir() . DS . self::QUEUE_FILE;
     }
 
     private function log(string $message): void

@@ -170,7 +170,7 @@
         <jobs>
             <mageaustralia_fpc_async_flush>
                 <schedule>
-                    <cron_expr>* * * * *</cron_expr>
+                    <cron_expr>always</cron_expr>
                 </schedule>
                 <run>
                     <model>mageaustralia_fpc/observer::processAsyncFlush</model>
@@ -186,7 +186,7 @@
             </mageaustralia_fpc_cleanup>
             <mageaustralia_fpc_warmup>
                 <schedule>
-                    <cron_expr>* * * * *</cron_expr>
+                    <cron_expr>always</cron_expr>
                 </schedule>
                 <run>
                     <model>mageaustralia_fpc/observer::processWarmup</model>
