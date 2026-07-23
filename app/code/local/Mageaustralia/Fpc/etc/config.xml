@@ -149,6 +149,41 @@
                 </observers>
             </application_clean_cache>
 
+            <!-- Invalidation: manual full flush (admin buttons + CLI cache:flush) -->
+            <adminhtml_cache_flush_all>
+                <observers>
+                    <mageaustralia_fpc_flush_all>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onAdminCacheFlush</method>
+                    </mageaustralia_fpc_flush_all>
+                </observers>
+            </adminhtml_cache_flush_all>
+
+            <adminhtml_cache_flush_system>
+                <observers>
+                    <mageaustralia_fpc_flush_system>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onAdminCacheFlush</method>
+                    </mageaustralia_fpc_flush_system>
+                </observers>
+            </adminhtml_cache_flush_system>
+
+            <!-- Per-type refresh from Cache Management (Maho dispatches this from
+                 CacheController::massRefreshAction); flush FPC only when our type
+                 is the one refreshed, since Maho's tagged clean() no longer fires
+                 application_clean_cache. -->
+            <adminhtml_cache_refresh_type>
+                <observers>
+                    <mageaustralia_fpc_refresh_type>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onCacheRefreshType</method>
+                    </mageaustralia_fpc_refresh_type>
+                </observers>
+            </adminhtml_cache_refresh_type>
+
             <!-- Refresh actions: flush FPC after cart/wishlist/compare actions -->
             <controller_action_postdispatch>
                 <observers>

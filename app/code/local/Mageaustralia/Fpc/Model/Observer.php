@@ -455,6 +455,43 @@ class Mageaustralia_Fpc_Model_Observer
         }
     }
 
+    /**
+     * Flush the FPC flat-file store on a manual full cache flush.
+     *
+     * The admin "Flush Cache Storage" / "Flush Magento Cache" buttons and the
+     * `./maho cache:flush` CLI all dispatch adminhtml_cache_flush_all (storage
+     * clears also dispatch adminhtml_cache_flush_system) but NOT
+     * application_clean_cache, so onCleanCache never fired for them and the
+     * var/fpc store was left stale after a manual flush. Wiring these events
+     * makes a manual flush also invalidate cached pages. No isEnabled guard so
+     * leftover pages are cleared even after FPC is switched off.
+     *
+     * Events: adminhtml_cache_flush_all, adminhtml_cache_flush_system
+     */
+    public function onAdminCacheFlush(Maho\Event\Observer $observer): void
+    {
+        $this->getCache()->flush();
+        $this->logStat('flush', '*', null, 'admin_cache_flush');
+    }
+
+    /**
+     * Clear the FPC page store when the admin refreshes JUST the "Full Page Cache"
+     * type (Cache Management -> select Full Page Cache -> Actions: Refresh).
+     *
+     * Needed because Maho's Mage_Core_Model_Cache::clean() invalidates tags via the
+     * cache adapter WITHOUT dispatching application_clean_cache, so the tag-based
+     * onCleanCache() observer never fires for a per-type refresh. Maho does dispatch
+     * adminhtml_cache_refresh_type from CacheController::massRefreshAction, so we key
+     * off that and flush only when our own type is the one being refreshed.
+     */
+    public function onCacheRefreshType(Maho\Event\Observer $observer): void
+    {
+        if ($observer->getEvent()->getType() === 'fpc') {
+            $this->getCache()->flush();
+            $this->logStat('flush', '*', null, 'admin_cache_refresh_type:fpc');
+        }
+    }
+
     // ── Refresh Actions ─────────────────────────────────────────────
 
     /**
