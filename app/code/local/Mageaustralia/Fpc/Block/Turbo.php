@@ -146,6 +146,18 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
                 document.querySelectorAll(c.resetCloneSelectors).forEach(function(el) {
                     var clone = el.cloneNode(true);
                     clone.value = '';
+                    // Strip init-marker data flags from the clone.
+                    //
+                    // cloneNode copies data-* attributes but NOT event listeners - that is
+                    // the whole reason we clone (a fresh element with no accumulated
+                    // handlers). But libraries such as Meilisearch guard re-init with a
+                    // data-*-attached flag: carrying that flag onto the clone makes their
+                    // re-init skip it, so the clone ends up with the flag set, no listeners
+                    // and no dropdown - the search input goes silently dead. Clearing the
+                    // markers lets the post-navigation re-init actually re-attach.
+                    Object.keys(clone.dataset).forEach(function(k) {
+                        if (/attached|bound|initialized/i.test(k)) { delete clone.dataset[k]; }
+                    });
                     el.parentNode.replaceChild(clone, el);
                 });
             } catch(e) {}
