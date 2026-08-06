@@ -55,6 +55,11 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return Mage::getStoreConfigFlag('system/fpc/customer_groups');
     }
 
+    public function varyByCurrency(): bool
+    {
+        return Mage::getStoreConfigFlag('system/fpc/vary_currency');
+    }
+
     public function gzipOnly(): bool
     {
         return Mage::getStoreConfigFlag('system/fpc/gzip_only');
@@ -65,6 +70,16 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     public function shouldFlushOnProductSave(): bool
     {
         return Mage::getStoreConfigFlag('system/fpc/flush_on_product_save');
+    }
+
+    /**
+     * Whether a tagged cache clean should purge the affected URLs rather than
+     * flushing the whole store. Kill switch: turning this off restores the
+     * previous flush-everything behaviour without a deploy.
+     */
+    public function shouldPurgeTagsByUrl(): bool
+    {
+        return Mage::getStoreConfigFlag('system/fpc/purge_tags_by_url');
     }
 
     public function shouldFlushOnStockChange(): bool
@@ -87,6 +102,11 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     public function isTurboEnabled(): bool
     {
         return Mage::getStoreConfigFlag('system/fpc/turbo_enabled');
+    }
+
+    public function isTurboPrefetchEnabled(): bool
+    {
+        return Mage::getStoreConfigFlag('system/fpc/turbo_prefetch');
     }
 
     /**
@@ -317,6 +337,22 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             }
         }
 
+        // Currency variation. The current currency lives in the session, which
+        // neither this key nor nginx sees by default, so without this every
+        // currency collides on one cached page (a NZD visitor gets the cached
+        // AUD header + AUD prices, or vice-versa). Key non-default currencies
+        // separately. The default (base) currency keeps the bare key so it stays
+        // statically servable by nginx try_files; non-default currencies get a
+        // __c<CODE> suffix and are served by the PHP fallback (or by nginx, if a
+        // matching try_files rule keyed on the fpc_cur cookie is added).
+        if ($this->varyByCurrency()) {
+            $store = Mage::app()->getStore();
+            $currency = (string) $store->getCurrentCurrencyCode();
+            if ($currency !== '' && $currency !== (string) $store->getDefaultCurrencyCode()) {
+                $suffix .= '__c' . $this->sanitizePathSegment($currency);
+            }
+        }
+
         return $storeCode . '/' . $base . $suffix . '.' . $ext;
     }
 
@@ -488,8 +524,51 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
      *
      * @return string[]
      */
+    /**
+     * Storefront URLs of the visible parent product(s) for a non-visible variant.
+     *
+     * A configurable/grouped child has no page of its own; its stock/price surfaces on the
+     * parent (e.g. the size dropdown). Returns the parent's URLs so the parent page refreshes.
+     * Orphans (no visible parent) return [] — never a full flush. Fully guarded: any resolution
+     * error logs and yields [] rather than throwing into a stock/product save.
+     *
+     * @return string[]
+     */
+    private function getParentProductUrls(int $childId): array
+    {
+        $urls = [];
+        try {
+            // Configurable variants are the non-visible children that matter here (size/colour).
+            // Grouped associations are themselves visible products, so they never reach this path.
+            $parentIds = Mage::getResourceSingleton('catalog/product_type_configurable')->getParentIdsByChild($childId);
+            if ($parentIds === []) {
+                return [];
+            }
+            $parents = Mage::getModel('catalog/product')->getCollection()
+                ->addAttributeToSelect(['url_key', 'url_path', 'visibility'])
+                ->addFieldToFilter('entity_id', ['in' => $parentIds]);
+            foreach ($parents as $parent) {
+                /** @var Mage_Catalog_Model_Product $parent */
+                if ((int) $parent->getVisibility() === Mage_Catalog_Model_Product_Visibility::VISIBILITY_NOT_VISIBLE) {
+                    continue;
+                }
+                $urls = array_merge($urls, $this->getProductUrls($parent));
+            }
+        } catch (\Throwable $e) {
+            Mage::log('FPC: parent-URL resolve failed for child ' . $childId . ': ' . $e->getMessage(), Mage::LOG_WARNING, 'fpc.log');
+        }
+        return array_values(array_unique($urls));
+    }
+
     public function getProductUrls(Mage_Catalog_Model_Product $product): array
     {
+        // Not visible individually (configurable/grouped variant): no page of its own — its
+        // availability shows on the PARENT page, so purge the parent instead. Orphans resolve
+        // to nothing, so a routine variant stock change never falls through to a full flush.
+        if ((int) $product->getVisibility() === Mage_Catalog_Model_Product_Visibility::VISIBILITY_NOT_VISIBLE) {
+            return $this->getParentProductUrls((int) $product->getId());
+        }
+
         $urls = [];
 
         // Product URL
@@ -513,7 +592,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             }
         }
 
-        return array_unique(array_filter($urls));
+        return array_values(array_filter(array_unique($urls), fn(string $p): bool => $this->isRewrittenPath($p)));
     }
 
     /**
@@ -552,7 +631,47 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             }
         }
 
-        return array_unique(array_filter($urls));
+        return array_values(array_filter(array_unique($urls), fn(string $p): bool => $this->isRewrittenPath($p)));
+    }
+
+    /**
+     * Frontend paths affected by a set of tagged catalog entities.
+     *
+     * Reuses the same URL sets the save observers already purge, so a tagged clean
+     * invalidates exactly what an equivalent product/category save would — product page
+     * plus its category pages, and for a category its own page plus parent and children.
+     *
+     * @param  int[] $productIds
+     * @param  int[] $categoryIds
+     * @return string[] relative paths, de-duplicated
+     */
+    public function getUrlsForTaggedEntities(array $productIds, array $categoryIds): array
+    {
+        $urls = [];
+
+        $productIds = array_unique(array_filter($productIds));
+        if ($productIds !== []) {
+            // One collection rather than a load() per id.
+            $products = Mage::getModel('catalog/product')->getCollection()
+                ->addAttributeToSelect(['url_key', 'url_path'])
+                ->addFieldToFilter('entity_id', ['in' => $productIds]);
+
+            foreach ($products as $product) {
+                /** @var Mage_Catalog_Model_Product $product */
+                $urls = array_merge($urls, $this->getProductUrls($product));
+            }
+        }
+
+        // Categories need a full load: getCategoryUrls() walks parent and children.
+        foreach (array_unique(array_filter($categoryIds)) as $categoryId) {
+            /** @var Mage_Catalog_Model_Category $category */
+            $category = Mage::getModel('catalog/category')->load($categoryId);
+            if ($category->getId()) {
+                $urls = array_merge($urls, $this->getCategoryUrls($category));
+            }
+        }
+
+        return array_values(array_unique(array_filter($urls)));
     }
 
     /**
@@ -562,6 +681,23 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     {
         $parsed = parse_url($url);
         return trim($parsed['path'] ?? '/', '/');
+    }
+
+    /**
+     * Whether a path is a real, browsable frontend URL.
+     *
+     * getUrl() falls back to the raw catalog/category/view/<id> (or product/view) form when an
+     * entity has no URL rewrite — the store root category being the common case. Those paths are
+     * not browsable: the warm-up crawler requests them, gets a 404, and every miss is recorded by
+     * the 404 manager as if it were a broken link. They are equally pointless to purge, since
+     * nothing is ever cached under them.
+     */
+    public function isRewrittenPath(string $path): bool
+    {
+        $path = ltrim($path, '/');
+        return $path !== ''
+            && !str_starts_with($path, 'catalog/category/view')
+            && !str_starts_with($path, 'catalog/product/view');
     }
 
     // ── Stats Query Methods ─────────────────────────────────────────
@@ -720,6 +856,61 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
      *
      * @return array<int, array{url_path: string, miss_count: int}>
      */
+    /**
+     * The slowest individual requests in each hour, for the TTFB chart tooltips.
+     *
+     * Only the raw stats table records url_path and a per-request ttfb_ms; the hourly
+     * rollup is pre-aggregated and has no URLs, so buckets older than the raw retention
+     * window simply come back empty and the tooltip falls back to showing figures only.
+     *
+     * Ranking is done by fetching the slowest requests across the whole window and
+     * bucketing them in PHP rather than with a per-group window function, which keeps the
+     * query portable across MySQL/PostgreSQL/SQLite.
+     *
+     * @return array<string, array<int, array{url_path: string, ttfb_ms: int}>>
+     *         keyed by 'Y-m-d H:00' in UTC
+     */
+    public function getSlowestUrlsByHour(
+        int $hours = 24,
+        string $storeCode = '',
+        int $perBucket = 3,
+        int $scanLimit = 400,
+    ): array {
+        $read = $this->getStatsReadConnection();
+        $table = $this->getStatsTable();
+        $since = $this->getStatsSince($hours);
+
+        $select = $read->select()
+            ->from($table, [
+                'hour'     => $read->getDateFormatSql('created_at', '%Y-%m-%d %H:00'),
+                'url_path' => new Maho\Db\Expr("REPLACE(url_path, '//', '/')"),
+                'ttfb_ms'  => 'ttfb_ms',
+            ])
+            ->where('created_at >= ?', $since)
+            ->where('ttfb_ms IS NOT NULL')
+            ->where('ttfb_ms > ?', 0)
+            ->where('url_path != ?', '')
+            ->order('ttfb_ms DESC')
+            ->limit($scanLimit);
+
+        $this->applyStoreFilter($select, $storeCode);
+
+        $byHour = [];
+        foreach ($read->fetchAll($select) as $row) {
+            $hour = (string) $row['hour'];
+            if (count($byHour[$hour] ?? []) >= $perBucket) {
+                continue; // rows arrive slowest-first, so the bucket is already full
+            }
+            $path = ltrim((string) $row['url_path'], '/');
+            $byHour[$hour][] = [
+                'url_path' => $path === '' ? '/' : $path,
+                'ttfb_ms'  => (int) $row['ttfb_ms'],
+            ];
+        }
+
+        return $byHour;
+    }
+
     public function getTopMissedUrls(int $limit = 10, int $hours = 24, string $storeCode = ''): array
     {
         $read = $this->getStatsReadConnection();

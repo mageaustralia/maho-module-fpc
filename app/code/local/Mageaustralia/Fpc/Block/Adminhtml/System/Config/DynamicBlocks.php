@@ -23,8 +23,7 @@ declare(strict_types=1);
  *   - Selector: CSS selector to find in cached HTML (e.g. ".skip-cart .count", "#minicart")
  *   - Mode: "html" (replace innerHTML) or "text" (replace textContent)
  */
-class Mageaustralia_Fpc_Block_Adminhtml_System_Config_DynamicBlocks
-    extends Mage_Adminhtml_Block_System_Config_Form_Field_Array_Abstract
+class Mageaustralia_Fpc_Block_Adminhtml_System_Config_DynamicBlocks extends Mage_Adminhtml_Block_System_Config_Form_Field_Array_Abstract
 {
     private ?Mage_Adminhtml_Block_Html_Select $modeRenderer = null;
 

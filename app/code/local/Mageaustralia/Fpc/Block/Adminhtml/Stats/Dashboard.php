@@ -190,6 +190,24 @@ class Mageaustralia_Fpc_Block_Adminhtml_Stats_Dashboard extends Mage_Adminhtml_B
     }
 
     /**
+     * Slowest URLs per hour, keyed by the same localised hour string getHourlyTtfb()
+     * returns so the chart can look a bucket up directly.
+     *
+     * @return array<string, array<int, array{url_path: string, ttfb_ms: int}>>
+     */
+    public function getSlowestUrlsByHour(): array
+    {
+        $raw = $this->getFpcHelper()->getSlowestUrlsByHour($this->getPeriodHours(), $this->getStoreFilter());
+
+        $localised = [];
+        foreach ($raw as $utcHour => $urls) {
+            $localised[$this->toLocalTime((string) $utcHour)] = $urls;
+        }
+
+        return $localised;
+    }
+
+    /**
      * Convert one datetime column of a result set from UTC to the configured timezone.
      *
      * @param array<int, array<string, mixed>> $rows

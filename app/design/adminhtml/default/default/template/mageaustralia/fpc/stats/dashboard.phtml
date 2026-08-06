@@ -12,6 +12,7 @@ $topMissed    = $this->getTopMissedUrls();
 $recentFlush  = $this->getRecentFlushes();
 $hourlyStats  = $this->getHourlyStats();
 $hourlyTtfb   = $this->getHourlyTtfb();
+$slowUrls     = $this->getSlowestUrlsByHour();
 $periodHours  = $this->getPeriodHours();
 $periodLabel  = $this->getPeriodLabel();
 $periodOpts   = $this->getPeriodOptions();
@@ -142,17 +143,32 @@ if ($niceTtfbMax < 1) {
         gap: 24px;
     }
     .fpc-dash .fpc-grid-2 > .fpc-section { min-width: 0; }
-    .fpc-dash .fpc-reason {
+    /* Flush reasons run from ~20 to ~200 characters (a cache_clean carries its whole
+       tag list), so the cell truncates and reveals the rest on hover.
+
+       This has to be done with table-layout:fixed and widths on the other two columns.
+       Truncating via `display:block` on the <td> takes the cell out of the table layout
+       altogether, and `max-width` on a table-cell is ignored unless the layout is fixed —
+       together those collapsed the column to a couple of characters. */
+    .fpc-dash table.fpc-table-fixed { table-layout: fixed; }
+    /* Width-only classes: with table-layout:fixed the columns are sized from the first
+       row, so these sit on the <th>. Kept separate from .fpc-time/.fpc-store, which
+       carry cell colours we do not want applied to the header. */
+    .fpc-dash .fpc-col-time { width: 160px; }
+    .fpc-dash .fpc-col-store { width: 90px; }
+    .fpc-dash td.fpc-reason {
         font-family: "SF Mono", "Fira Code", monospace;
         font-size: 12px;
-        max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        display: block;
     }
-    .fpc-dash .fpc-reason:hover { white-space: normal; word-break: break-all; }
-    .fpc-dash td.fpc-reason { max-width: 0; }
+    /* Reveal the full value in place; the row grows rather than the column. */
+    .fpc-dash td.fpc-reason:hover {
+        white-space: normal;
+        word-break: break-all;
+        overflow: visible;
+    }
 
     /* Chart tooltip */
     .fpc-dash .fpc-chart-wrap { position: relative; }
@@ -190,6 +206,30 @@ if ($niceTtfbMax < 1) {
     }
     .fpc-tooltip-label { color: #9ca3af; font-size: 11px; margin-right: 6px; }
     .fpc-tooltip-time { color: #9ca3af; font-size: 11px; margin-bottom: 2px; }
+    /* Slowest-URL list. The tooltip itself is nowrap to keep the figures on one line,
+       so wrapping is re-enabled here for long paths.
+
+       An explicit width, not max-width: the tooltip sizes to its content, and a flex row
+       whose text can break anywhere has a min-content width of about one character — so
+       max-width alone let the whole block collapse into a narrow column. Only tooltips
+       that actually carry URLs get this width; the plain figure tooltips stay compact. */
+    .fpc-tooltip-urls {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255, 255, 255, 0.15);
+        width: 540px;
+        max-width: 80vw;
+        white-space: normal;
+    }
+    .fpc-tooltip-url { display: flex; gap: 10px; align-items: baseline; margin-top: 4px; }
+    .fpc-tooltip-url-ms { color: #f59e0b; flex: none; font-variant-numeric: tabular-nums; }
+    .fpc-tooltip-url-path {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        /* Break only where a line genuinely will not fit, rather than mid-word everywhere. */
+        overflow-wrap: anywhere;
+    }
 
     @media (max-width: 1100px) {
         .fpc-dash .fpc-cards { grid-template-columns: repeat(2, 1fr); }
@@ -432,6 +472,12 @@ if ($niceTtfbMax < 1) {
                                 data-fpc-value="<?php echo round($bucket['avg_ttfb']); ?>ms"
                                 data-fpc-extra-label="P95"
                                 data-fpc-extra-value="<?php echo $bucket['p95_ttfb']; ?>ms"
+                                <?php /* Slowest individual requests in this hour, so a P95 spike
+                                        can be traced to the URLs that caused it. Absent for
+                                        buckets served from the rollup, which has no URLs. */ ?>
+                                <?php if (!empty($slowUrls[$bucket['hour']])): ?>
+                                data-fpc-urls="<?php echo $this->escapeHtml(Mage::helper('core')->jsonEncode($slowUrls[$bucket['hour']])); ?>"
+                                <?php endif; ?>
                                 data-fpc-color="#3b82f6" />
                     <?php endforeach; ?>
 
@@ -489,19 +535,21 @@ if ($niceTtfbMax < 1) {
         <div class="fpc-section">
             <h3 class="fpc-section-title">Recent Flushes</h3>
             <?php if (!empty($recentFlush)): ?>
-                <table>
+                <table class="fpc-table-fixed">
                     <thead>
                         <tr>
-                            <th>Time</th>
+                            <th class="fpc-col-time">Time</th>
                             <th>Reason</th>
-                            <th>Store</th>
+                            <th class="fpc-col-store">Store</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($recentFlush as $row): ?>
+                            <?php $flushReason = (string) ($row['flush_reason'] ?? '-'); ?>
                             <tr>
                                 <td class="fpc-time"><?php echo $this->escapeHtml($row['created_at']); ?></td>
-                                <td class="fpc-reason"><?php echo $this->escapeHtml($row['flush_reason'] ?? '-'); ?></td>
+                                <?php /* title so the full value is available without hovering long enough to expand */ ?>
+                                <td class="fpc-reason" title="<?php echo $this->escapeHtml($flushReason); ?>"><?php echo $this->escapeHtml($flushReason); ?></td>
                                 <td class="fpc-store"><?php echo $this->escapeHtml($row['store_code'] ?? '-'); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -536,13 +584,65 @@ if ($niceTtfbMax < 1) {
         if (extraLabel) {
             html += '<div><span class="fpc-tooltip-label">' + extraLabel + ':</span><strong>' + extraValue + '</strong></div>';
         }
+        html += buildSlowUrlsHtml(el);
         return html;
     }
 
+    // url_path comes from real request paths, so it is escaped before going anywhere
+    // near innerHTML.
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function buildSlowUrlsHtml(el) {
+        var raw = el.getAttribute('data-fpc-urls');
+        if (!raw) {
+            return '';
+        }
+
+        var urls;
+        try {
+            urls = JSON.parse(raw);
+        } catch (e) {
+            return '';
+        }
+        if (!urls || !urls.length) {
+            return '';
+        }
+
+        var html = '<div class="fpc-tooltip-urls">';
+        html += '<div class="fpc-tooltip-label">Slowest in this hour</div>';
+        urls.forEach(function (u) {
+            html += '<div class="fpc-tooltip-url">'
+                + '<span class="fpc-tooltip-url-ms">' + escapeHtml(u.ttfb_ms) + 'ms</span>'
+                + '<span class="fpc-tooltip-url-path">/' + escapeHtml(u.url_path) + '</span>'
+                + '</div>';
+        });
+        return html + '</div>';
+    }
+
     function positionTooltip(evt) {
-        // Position above cursor (viewport-relative since tooltip is position:fixed)
-        tooltip.style.left = evt.clientX + 'px';
-        tooltip.style.top = evt.clientY + 'px';
+        // Position above cursor (viewport-relative since tooltip is position:fixed).
+        // The transform is translate(-50%, -100%), so `left` is the horizontal centre and
+        // `top` is the bottom edge. Both are clamped to the viewport: a tooltip carrying
+        // URLs is wide and tall enough to run off the left edge, or off the top on the
+        // upper rows of the chart.
+        var margin = 8;
+        var halfWidth = tooltip.offsetWidth / 2;
+        var height = tooltip.offsetHeight;
+
+        var x = Math.min(
+            Math.max(evt.clientX, halfWidth + margin),
+            window.innerWidth - halfWidth - margin,
+        );
+        var y = Math.max(evt.clientY, height + margin);
+
+        tooltip.style.left = x + 'px';
+        tooltip.style.top = y + 'px';
     }
 
     // Delegate from .fpc-dash container

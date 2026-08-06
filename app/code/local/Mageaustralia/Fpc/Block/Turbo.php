@@ -34,9 +34,15 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
         $excludedJson = json_encode($excludedPaths, JSON_THROW_ON_ERROR);
 
         $reloadMeta = $this->shouldForceReload() ? '<meta name="turbo-visit-control" content="reload">' : '';
+        // Turbo 8 hover-prefetch is on by default. It uses <link rel=prefetch>
+        // (Sec-Purpose: prefetch), which a CDN's speculative loading may refuse on
+        // non-cacheable pages (Cloudflare -> cf-speculation-refused / 503). Disabling
+        // it stops those prefetch requests; Turbo Drive's fetch navigation still works.
+        $prefetchMeta = $helper->isTurboPrefetchEnabled() ? '' : '<meta name="turbo-prefetch" content="false">';
 
         return <<<HTML
 {$reloadMeta}
+{$prefetchMeta}
 <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-umd.min.js" data-turbo-track="reload"></script>
 <script data-turbo-eval="false">
 (function() {
@@ -46,6 +52,27 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
     window._mahoTurboInit = true;
 
     var excludedPaths = {$excludedJson};
+
+    // Currency switch fix: the switcher sits inside the data-turbo-permanent
+    // header, so its uenc (return URL) freezes to whatever page the header was
+    // first rendered on — after a Turbo navigation it points at the OLD page,
+    // sending the shopper back there on switch. Rebuild uenc from the LIVE
+    // location at click time and do a full navigation, so the switch always
+    // returns to the current page. (Full nav is also what we want here — the
+    // permanent header can't reflect the new currency via a Turbo visit.)
+    document.addEventListener('click', function(e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href*="/directory/currency/switch"]') : null;
+        if (!a) return;
+        e.preventDefault();
+        try {
+            var uenc = btoa(window.location.href).split('+').join('-').split('/').join('_').split('=').join(',');
+            var u = new URL(a.href, window.location.origin);
+            u.searchParams.set('uenc', uenc);
+            window.location.href = u.pathname + u.search;
+        } catch (err) {
+            window.location.href = a.href;
+        }
+    }, true);
 
     // Bypass Turbo for excluded URL paths (checkout, customer, etc.)
     document.addEventListener('turbo:before-visit', function(e) {
@@ -96,6 +123,10 @@ class Mageaustralia_Fpc_Block_Turbo extends Mage_Core_Block_Abstract
         });
     }
     document.addEventListener('turbo:load', disableTurboOnExcludedForms);
+    // Forms injected by the FPC hole-punch (e.g. the account-dropdown login
+    // form) arrive AFTER turbo:load, so the pass above misses them and they
+    // stay Turbo-controlled. Re-mark once the dynamic blocks land.
+    document.addEventListener('fpc:dynamic:loaded', disableTurboOnExcludedForms);
     if (document.readyState !== 'loading') disableTurboOnExcludedForms();
     else document.addEventListener('DOMContentLoaded', disableTurboOnExcludedForms);
 

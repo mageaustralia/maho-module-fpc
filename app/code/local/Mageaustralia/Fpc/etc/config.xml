@@ -340,12 +340,14 @@ srsltid</miss_uri_params>
                 <gzip_only>0</gzip_only>
                 <flush_on_product_save>1</flush_on_product_save>
                 <flush_on_stock_change>1</flush_on_stock_change>
+                <purge_tags_by_url>1</purge_tags_by_url>
                 <refresh_actions/>
                 <turbo_enabled>1</turbo_enabled>
                 <turbo_category>1</turbo_category>
                 <turbo_product>0</turbo_product>
                 <turbo_cms>1</turbo_cms>
-                <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/,/catalog/product_compare/,/newsletter/,/sendfriend/,/tag/,/poll/</turbo_excluded_paths>
+                <turbo_prefetch>1</turbo_prefetch>
+                <turbo_excluded_paths>/checkout/,/firecheckout,/customer/,/wishlist/,/catalogsearch/,/contacts/,/review/,/paypal/,/catalog/product_compare/,/newsletter/,/sendfriend/,/tag/,/poll/,/directory/currency/</turbo_excluded_paths>
                 <warmup_enabled>0</warmup_enabled>
                 <warmup_batch_size>200</warmup_batch_size>
                 <warmup_delay_ms>100</warmup_delay_ms>

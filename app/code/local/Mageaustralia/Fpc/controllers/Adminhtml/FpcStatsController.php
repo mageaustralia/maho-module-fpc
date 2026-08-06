@@ -15,7 +15,7 @@ class Mageaustralia_Fpc_Adminhtml_FpcStatsController extends Mage_Adminhtml_Cont
 
     #[\Maho\Config\Route('/fpc/adminhtml_fpcstats', name: 'fpc.adminhtml_fpcstats')]
     #[\Maho\Config\Route('/fpc/adminhtml_fpcstats/index', name: 'fpc.adminhtml_fpcstats.index')]
-    #[\Maho\Config\Route('/admin/fpcStats/index')]
+    #[Maho\Config\Route('/admin/fpcStats/index')]
     public function indexAction(): void
     {
         $this->loadLayout();

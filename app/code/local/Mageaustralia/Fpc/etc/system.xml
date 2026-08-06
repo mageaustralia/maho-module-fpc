@@ -94,6 +94,17 @@
                             <show_in_website>1</show_in_website>
                             <show_in_store>1</show_in_store>
                         </flush_on_product_save>
+                        <purge_tags_by_url translate="label comment">
+                            <label>Purge Tagged Cache Cleans By URL</label>
+                            <comment>When Magento cleans catalog cache tags, purge only the affected product and category pages instead of the whole store. Set to No to restore flushing everything, e.g. if a page is ever served stale.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/purge_tags_by_url</config_path>
+                            <sort_order>47</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </purge_tags_by_url>
                         <flush_on_stock_change translate="label comment">
                             <label>Flush Product After Inventory Change</label>
                             <comment>Flush cached product page when stock level changes. Disable during bulk stock sync — changes will be flushed by cron within 1 minute.</comment>
@@ -224,6 +235,17 @@
                             <show_in_website>1</show_in_website>
                             <show_in_store>1</show_in_store>
                         </turbo_enabled>
+                        <turbo_prefetch translate="label comment">
+                            <label>Link Prefetch on Hover</label>
+                            <comment>Prefetch pages on hover for an instant head-start. Turn OFF when the site is behind a CDN whose speculative loading refuses prefetch of non-cacheable pages (e.g. Cloudflare returns cf-speculation-refused / 503). Turbo Drive fetch navigation is unaffected.</comment>
+                            <frontend_type>select</frontend_type>
+                            <source_model>adminhtml/system_config_source_yesno</source_model>
+                            <config_path>system/fpc/turbo_prefetch</config_path>
+                            <sort_order>15</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>1</show_in_website>
+                            <show_in_store>1</show_in_store>
+                        </turbo_prefetch>
                         <turbo_category translate="label comment">
                             <label>Category Pages</label>
                             <comment>Use Turbo for category browsing (recommended — biggest benefit).</comment>

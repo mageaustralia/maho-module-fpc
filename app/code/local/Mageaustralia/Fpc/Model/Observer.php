@@ -18,6 +18,13 @@ declare(strict_types=1);
  */
 class Mageaustralia_Fpc_Model_Observer
 {
+    /**
+     * Above this many tagged entities in one clean, resolving each to its URLs costs
+     * more than simply rebuilding the cache, so a full flush is cheaper. Mass actions
+     * and imports land here; an ordinary save carries one product and a few categories.
+     */
+    public const MAX_TAGGED_ENTITIES = 30;
+
     private ?Mageaustralia_Fpc_Helper_Data $helper = null;
     private ?Mageaustralia_Fpc_Model_Cache $cache = null;
 
@@ -53,6 +60,48 @@ class Mageaustralia_Fpc_Model_Observer
 
         $request = $front->getRequest();
         $response = $front->getResponse();
+
+        // Keep an fpc_cur cookie in sync with the current (non-default) currency so the
+        // web server's try_files can pick the matching __c<CODE> cache file for static
+        // hits (PHP already varies via buildCacheKey). Placed before the cacheability
+        // returns below so it also fires on the non-cacheable currency-switch redirect.
+        // Only emits a Set-Cookie when the value actually changes, so default-currency
+        // pages stay cookie-free (and CDN-cacheable).
+        if ($helper->varyByCurrency() && !Mage::app()->getStore()->isAdmin()) {
+            $store = Mage::app()->getStore();
+            $current = (string) $store->getCurrentCurrencyCode();
+            $default = (string) $store->getDefaultCurrencyCode();
+            $cookie = Mage::getSingleton('core/cookie');
+            $existing = $cookie->get('fpc_cur');
+            if ($current !== '' && $current !== $default) {
+                if ($existing !== $current) {
+                    $cookie->set('fpc_cur', $current);
+                }
+            } elseif ($existing) {
+                $cookie->delete('fpc_cur');
+            }
+        }
+
+        // Keep an fpc_grp cookie in sync with the logged-in customer group so the
+        // web server's try_files can pick the matching __g<id> cache file (PHP
+        // already varies via buildCacheKey). Guests (NOT_LOGGED_IN) get no cookie so
+        // they keep the group-agnostic base key. Runs before the cacheability returns
+        // so it also fires on the (non-cacheable) login/logout responses.
+        if ($helper->varyByCustomerGroup() && !Mage::app()->getStore()->isAdmin()) {
+            $custSession = Mage::getSingleton('customer/session');
+            $groupId = $custSession->isLoggedIn()
+                ? (int) $custSession->getCustomerGroupId()
+                : Mage_Customer_Model_Group::NOT_LOGGED_IN_ID;
+            $grpCookie = Mage::getSingleton('core/cookie');
+            $existingGrp = $grpCookie->get('fpc_grp');
+            if ($groupId !== Mage_Customer_Model_Group::NOT_LOGGED_IN_ID) {
+                if ((string) $existingGrp !== (string) $groupId) {
+                    $grpCookie->set('fpc_grp', (string) $groupId);
+                }
+            } elseif ($existingGrp) {
+                $grpCookie->delete('fpc_grp');
+            }
+        }
 
         // Never cache POST, admin, no_cache, no-cache cookie, or unknown query params
         if ($helper->isPostRequest() || $helper->hasNoCacheParam() || $helper->hasNoCacheCookie() || $helper->isAdminLoggedIn()) {
@@ -427,6 +476,25 @@ class Mageaustralia_Fpc_Model_Observer
 
         $tags = $observer->getEvent()->getTags();
 
+        /*
+         * A single tag arrives here as a plain string, not a one-element array.
+         * Mage_Core_Model_Cache::clean() declares array|string and normalises
+         * internally, but Mage_Core_Model_App::cleanCache() dispatches whatever it
+         * was handed straight to this event without normalising. Core itself relies
+         * on that - Mage_Catalog_Model_Product::_afterSave() calls
+         * cleanCache('catalog_product_<id>') with a string.
+         *
+         * Iterating a string warned under PHP 8 and matched no prefix, so every
+         * string-tagged clean was silently ignored. Product saves were unaffected in
+         * practice because onProductSave handles those separately, but the tag path
+         * was dead for anything that did not have its own observer.
+         *
+         * Normalised the same way Cache::clean() does, so both see the same thing.
+         */
+        if (!empty($tags) && !is_array($tags)) {
+            $tags = [$tags];
+        }
+
         // Full flush (no tags) or catalog/CMS related tags
         $relevantPrefixes = [
             'FPC',
@@ -444,15 +512,74 @@ class Mageaustralia_Fpc_Model_Observer
             return;
         }
 
+        $isRelevant  = false;
+        $productIds  = [];
+        $categoryIds = [];
+        $unmappable  = false;
+
         foreach ($tags as $tag) {
+            $tagIsRelevant = false;
             foreach ($relevantPrefixes as $prefix) {
                 if (str_starts_with($tag, $prefix)) {
-                    $this->getCache()->flush();
-                    $this->logStat('flush', '*', null, 'cache_clean:' . implode(',', $tags));
-                    return;
+                    $tagIsRelevant = true;
+                    break;
                 }
             }
+            if (!$tagIsRelevant) {
+                continue;
+            }
+            $isRelevant = true;
+
+            if (preg_match('/^catalog_product_(\d+)$/', $tag, $m)) {
+                $productIds[] = (int) $m[1];
+                continue;
+            }
+            if (preg_match('/^catalog_category_(\d+)$/', $tag, $m)) {
+                $categoryIds[] = (int) $m[1];
+                continue;
+            }
+            // Bare entity-type tags accompany every specific tag and carry no identity
+            // of their own ("catalog_product" rides along with "catalog_product_123").
+            // Treating them as a reason to flush is what wiped the whole store on every
+            // product save.
+            if (in_array($tag, ['catalog_product', 'catalog_category'], true)) {
+                continue;
+            }
+            // Anything else relevant but not resolvable to a URL (CMS, CONFIG, ...).
+            $unmappable = true;
         }
+
+        if (!$isRelevant) {
+            return;
+        }
+
+        $entityCount = count($productIds) + count($categoryIds);
+
+        // Fall back to a full flush when targeting is switched off, when a tag cannot be
+        // mapped to a URL, when no tag identified anything, or when so many entities are
+        // involved that resolving them all costs more than rebuilding the cache. Serving a
+        // stale page is worse than an over-eager flush, so every uncertain case flushes.
+        if (!$this->getHelper()->shouldPurgeTagsByUrl()
+            || $unmappable
+            || $entityCount === 0
+            || $entityCount > self::MAX_TAGGED_ENTITIES
+        ) {
+            $this->getCache()->flush();
+            $this->logStat('flush', '*', null, 'cache_clean:' . implode(',', $tags));
+            return;
+        }
+
+        $urls = $this->getHelper()->getUrlsForTaggedEntities($productIds, $categoryIds);
+        if ($urls === []) {
+            // Catalog tags that resolve to no storefront URL (non-visible variants with no
+            // visible parent, or non-cacheable entities) must purge NOTHING. A routine
+            // stock/product save must never wipe the whole page cache; genuine global changes
+            // still full-flush via the guards above.
+            return;
+        }
+
+        $this->getCache()->purgeByPaths($urls);
+        $this->logStat('purge', implode(', ', $urls), null, 'cache_clean:' . implode(',', $tags));
     }
 
     /**
@@ -685,21 +812,20 @@ class Mageaustralia_Fpc_Model_Observer
 
             // Find the element's OWN matching close tag by depth-counting
             // same-name tags. The previous implementation matched (.*?) up to
-            // the FIRST "</...>", which for a nested block (e.g. a header
-            // account dropdown) deleted nested opening <div>/<form> tags while
-            // leaving their closing tags orphaned further down — unbalancing
-            // the surrounding markup and ejecting sibling <li>s out of their
-            // <ul> on cached hits. Balanced matching removes the element
-            // cleanly.
+            // the FIRST "</...>", which for a nested block (e.g. the account
+            // dropdown) deleted nested opening <div>/<form> tags while leaving
+            // their closing tags orphaned further down — unbalancing the
+            // surrounding markup and ejecting sibling <li>s out of their <ul>
+            // (grey cart appearing top-left on FPC-cached hits).
             $closeStart = $this->findMatchingCloseTag($html, $openEnd, $tagName);
             if ($closeStart === null) {
                 continue;
             }
 
             // Keep the element's own opening AND closing tags — preserving its
-            // class / style / data-fpc-block attributes (so e.g. a dropdown
-            // stays display:none and positioned) — and empty ONLY its inner
-            // content. The AJAX loader re-fills it client-side.
+            // class / style / data-fpc-block attributes (so e.g. the account
+            // dropdown stays display:none and positioned) — and empty ONLY its
+            // inner content. The AJAX loader re-fills it client-side.
             $html = substr($html, 0, $openEnd) . substr($html, $closeStart);
         }
 
@@ -715,17 +841,17 @@ class Mageaustralia_Fpc_Model_Observer
     {
         if (str_starts_with($selector, '#')) {
             $id = preg_quote(substr($selector, 1), '/');
-            return '/<[^>]+\bid=["\']' . $id . '["\'][^>]*>/si';
+            return '/<[^>]+\\bid=["\']' . $id . '["\'][^>]*>/si';
         }
 
         if (str_starts_with($selector, '.')) {
             $class = preg_quote(substr($selector, 1), '/');
-            return '/<[^>]+\bclass=["\'][^"\']*\b' . $class . '\b[^"\']*["\'][^>]*>/si';
+            return '/<[^>]+\\bclass=["\'][^"\']*\\b' . $class . '\\b[^"\']*["\'][^>]*>/si';
         }
 
         if (str_starts_with($selector, '[') && str_ends_with($selector, ']')) {
             $attr = preg_quote(substr($selector, 1, -1), '/');
-            return '/<[^>]+\b' . $attr . '(?:=["\'][^"\']*["\'])?[^>]*>/si';
+            return '/<[^>]+\\b' . $attr . '(?:=["\'][^"\']*["\'])?[^>]*>/si';
         }
 
         return null;
@@ -739,7 +865,7 @@ class Mageaustralia_Fpc_Model_Observer
     private function findMatchingCloseTag(string $html, int $offset, string $tagName): ?int
     {
         $q = preg_quote($tagName, '/');
-        $pattern = '/<' . $q . '\b[^>]*>|<\/' . $q . '\s*>/i';
+        $pattern = '/<' . $q . '\\b[^>]*>|<\\/' . $q . '\\s*>/i';
         if (!preg_match_all($pattern, $html, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER, $offset)) {
             return null;
         }
@@ -755,7 +881,7 @@ class Mageaustralia_Fpc_Model_Observer
                 $depth++;
             }
             if ($depth === 0) {
-                return $mm[0][1];
+                return $mm[0][1]; // start offset of the balancing close tag
             }
         }
 

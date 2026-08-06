@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Mageaustralia_Fpc — Full Page Cache
+ * Mageaustralia_Fpc - Full Page Cache
  *
  * Copyright (c) 2026 Mage Australia (https://mageaustralia.com.au)
  * Licensed under the Open Software License v3.0 (OSL-3.0)
@@ -10,7 +10,7 @@
 declare(strict_types=1);
 
 /**
- * Dynamic block controller — serves AJAX-loaded block content for FPC hole-punching.
+ * Dynamic block controller - serves AJAX-loaded block content for FPC hole-punching.
  *
  * GET /fpc/dynamic/?blocks=cart_count,account_links,messages
  *
@@ -77,7 +77,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
             }
         }
 
-        // Collect session messages — extractAll() calls getMessages(true)
+        // Collect session messages - extractAll() calls getMessages(true)
         // on each registered namespace which empties the in-memory message
         // collection (Mage's _data['messages'] is a reference into $_SESSION
         // under Symfony's session handler, so the mutation IS visible).
@@ -105,7 +105,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
         //      get a form_key that actually matches on the next POST.
         // This relies on the session still being WRITE-OPEN at this point. The
         // storefront "release session for read requests" observer explicitly
-        // skips the 'fpc' module for exactly this reason — see
+        // skips the 'fpc' module for exactly this reason - see
         // Mageaustralia_Storefront_Model_Observer::releaseSessionForReadRequest().
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_write_close();
@@ -219,7 +219,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
                 return (string) $helper->$method();
             }
         } catch (\Throwable) {
-            // Silent fail — block just renders empty
+            // Silent fail - block just renders empty
         }
 
         return '';
