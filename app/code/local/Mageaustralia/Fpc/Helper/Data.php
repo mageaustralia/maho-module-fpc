@@ -577,6 +577,20 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             $urls[] = $this->urlToPath($productUrl);
         }
 
+        // Every OTHER path that resolves to this product, not just the canonical one.
+        //
+        // getProductUrl() returns one URL, but with catalog/seo/product_use_categories on
+        // the same product is also reachable at {category-path}/{url-key}.html, and each of
+        // those caches as its own page. Purging only the canonical URL left them serving
+        // stale HTML until someone flushed the whole cache -- which is exactly how a deleted
+        // product image kept appearing on the frontend.
+        //
+        // Not a rare edge: 10,565 category-prefixed product rewrites across 3,596 products,
+        // with 1,193 such pages sitting in the cache when this was found.
+        foreach ($this->getProductRewritePaths((int) $product->getId()) as $path) {
+            $urls[] = $path;
+        }
+
         // Category URLs — batch load to avoid N+1
         $categoryIds = $product->getCategoryIds();
         if (!empty($categoryIds)) {
@@ -593,6 +607,34 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         }
 
         return array_values(array_filter(array_unique($urls), fn(string $p): bool => $this->isRewrittenPath($p)));
+    }
+
+    /**
+     * Every request path in core_url_rewrite that resolves to this product.
+     *
+     * Read straight from the rewrite table rather than rebuilt from category paths: it is the
+     * same source the router resolves against, so it also picks up numeric-suffixed paths from
+     * historical url_key collisions and any extension-less variant. Deliberately not filtered
+     * by store -- purgeByPaths() already walks every store directory, and purging a path that
+     * was never cached costs nothing.
+     *
+     * @return string[]
+     */
+    private function getProductRewritePaths(int $productId): array
+    {
+        if ($productId <= 0) {
+            return [];
+        }
+
+        $resource = Mage::getSingleton('core/resource');
+        $read = $resource->getConnection('core_read');
+
+        $select = $read->select()
+            ->from($resource->getTableName('core/url_rewrite'), 'request_path')
+            ->where('product_id = ?', $productId)
+            ->distinct(true);
+
+        return array_values(array_filter(array_map('strval', $read->fetchCol($select))));
     }
 
     /**
