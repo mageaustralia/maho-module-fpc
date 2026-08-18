@@ -265,7 +265,13 @@ class Mageaustralia_Fpc_Model_Warmup
         try {
             $options = [
                 'timeout' => 30,
-                'max_redirects' => 5,
+                // Do NOT follow redirects. A URL that 3xx-redirects is not a cacheable page (FPC
+                // never stores a redirect), and its canonical target is always warmed via its own
+                // queue entry (getProductUrls() lists the canonical URL first). Following would
+                // just re-render an already-warmed page. This was ~43% of warm traffic: the
+                // category-path product rewrites (getProductRewritePaths) 301 to the short
+                // canonical, and each follow re-rendered that canonical a second time.
+                'max_redirects' => 0,
                 'headers' => [
                     'User-Agent' => 'MahoFPC-Warmup/1.0',
                     'Accept-Encoding' => 'gzip',
@@ -280,6 +286,13 @@ class Mageaustralia_Fpc_Model_Warmup
             $client = \Symfony\Component\HttpClient\HttpClient::create($options);
             $response = $client->request('GET', $url);
             $httpCode = $response->getStatusCode();
+
+            if ($httpCode >= 300 && $httpCode < 400) {
+                // Redirect source — skip quietly. Its target is a separate queue entry, warmed
+                // on its own, so there is nothing to cache here.
+                $this->log(sprintf('SKIP %d (redirect) %s', $httpCode, $url));
+                return false;
+            }
 
             if ($httpCode !== 200) {
                 $this->log(sprintf('FAIL %d %s', $httpCode, $url));
