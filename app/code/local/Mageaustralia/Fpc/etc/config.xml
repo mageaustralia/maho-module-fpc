@@ -83,6 +83,27 @@
                 </observers>
             </catalog_product_save_after>
 
+            <!--
+                Invalidation: mass / inline attribute update.
+
+                updateAttributes() writes attributes at the resource level and never loads
+                or saves the product model, so catalog_product_save_after does not fire.
+                Both the core product grid mass actions (Update Attributes, Change Status)
+                and MageAustralia_AdminGrid inline editing go through it - AdminGrid calls
+                catalog/product_action::updateAttributes() directly for catalog_product
+                columns. Without this, changing status or custom_stock_status from a grid
+                left the cached page serving the old value until something else evicted it.
+            -->
+            <catalog_product_attribute_update_after>
+                <observers>
+                    <mageaustralia_fpc_product_attribute>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>onProductAttributeUpdate</method>
+                    </mageaustralia_fpc_product_attribute>
+                </observers>
+            </catalog_product_attribute_update_after>
+
             <!-- Invalidation: category save -->
             <catalog_category_save_after>
                 <observers>

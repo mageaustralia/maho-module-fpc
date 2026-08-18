@@ -19,6 +19,13 @@ declare(strict_types=1);
 class Mageaustralia_Fpc_Model_Observer
 {
     /**
+     * Above this many products in a single mass update, flush the whole cache instead of
+     * resolving each product's URLs. Building URLs means loading every product, which is
+     * far more expensive than dropping the cache and letting it refill.
+     */
+    public const MASS_UPDATE_FLUSH_THRESHOLD = 20;
+
+    /**
      * Above this many tagged entities in one clean, resolving each to its URLs costs
      * more than simply rebuilding the cache, so a full flush is cheaper. Mass actions
      * and imports land here; an ordinary save carries one product and a few categories.
@@ -278,6 +285,68 @@ class Mageaustralia_Fpc_Model_Observer
         $this->getCache()->purgeByPaths($urls);
 
         $this->logStat('purge', implode(', ', $urls), null, 'product_save:' . $product->getSku());
+    }
+
+    // ── Invalidation: Mass / Inline Attribute Update ────────────────
+
+    /**
+     * Purge FPC entries after a resource-level attribute write.
+     *
+     * Event: catalog_product_attribute_update_after
+     *
+     * catalog/product_action::updateAttributes() writes straight to the attribute tables
+     * without loading or saving the product model, so catalog_product_save_after never
+     * fires. Both the core product grid mass actions and MageAustralia_AdminGrid inline
+     * editing use it, which meant a status or custom_stock_status change made from a grid
+     * left stale HTML cached.
+     *
+     * Batch size matters here. A grid mass action can cover thousands of products, and
+     * getProductUrls() has to load each one to work out its URLs - expensive against a
+     * remote database. Past MASS_UPDATE_FLUSH_THRESHOLD it is both cheaper and safer to
+     * drop the whole cache than to build tens of thousands of URLs inside an admin request.
+     */
+    public function onProductAttributeUpdate(Maho\Event\Observer $observer): void
+    {
+        if (!$this->getHelper()->isEnabled()) {
+            return;
+        }
+
+        $productIds = array_values(array_unique(array_map('intval', (array) $observer->getEvent()->getProductIds())));
+        $productIds = array_filter($productIds);
+        if (empty($productIds)) {
+            return;
+        }
+
+        // Async mode: recording ids is cheap, so batch size is irrelevant.
+        if (!$this->getHelper()->shouldFlushOnProductSave()) {
+            foreach ($productIds as $productId) {
+                $this->queueAsyncFlush('products', $productId);
+            }
+            return;
+        }
+
+        if (count($productIds) > self::MASS_UPDATE_FLUSH_THRESHOLD) {
+            $this->getCache()->flush();
+            $this->logStat('flush', 'ALL', null, 'attribute_update:' . count($productIds) . ' products');
+            return;
+        }
+
+        $urls = [];
+        foreach ($productIds as $productId) {
+            $product = Mage::getModel('catalog/product')->load($productId);
+            if (!$product->getId()) {
+                continue;
+            }
+            $urls = array_merge($urls, $this->getHelper()->getProductUrls($product));
+        }
+
+        $urls = array_values(array_unique($urls));
+        if (empty($urls)) {
+            return;
+        }
+
+        $this->getCache()->purgeByPaths($urls);
+        $this->logStat('purge', implode(', ', $urls), null, 'attribute_update:' . count($productIds) . ' products');
     }
 
     // ── Invalidation: Category Save ─────────────────────────────────
