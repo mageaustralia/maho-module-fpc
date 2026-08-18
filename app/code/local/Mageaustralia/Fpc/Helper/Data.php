@@ -610,13 +610,17 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     }
 
     /**
-     * Every request path in core_url_rewrite that resolves to this product.
+     * Every CACHEABLE request path in core_url_rewrite that resolves to this product.
      *
      * Read straight from the rewrite table rather than rebuilt from category paths: it is the
-     * same source the router resolves against, so it also picks up numeric-suffixed paths from
-     * historical url_key collisions and any extension-less variant. Deliberately not filtered
-     * by store -- purgeByPaths() already walks every store directory, and purging a path that
-     * was never cached costs nothing.
+     * same source the router resolves against, so it picks up the canonical and the current
+     * category-path variants. Deliberately not filtered by store -- purgeByPaths() already walks
+     * every store directory, and purging a path that was never cached costs nothing.
+     *
+     * Redirect rows (options = R / RP) are excluded: those are historical url_key paths from a
+     * product rename that 301 to the current URL. A 301 is never stored in the FPC (so purging it
+     * is a no-op) and warming it is pure cost -- a full ~230ms url_rewrite lookup that caches
+     * nothing. The current, cacheable rewrites (options empty/NULL) are kept.
      *
      * @return string[]
      */
@@ -632,6 +636,10 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         $select = $read->select()
             ->from($resource->getTableName('core/url_rewrite'), 'request_path')
             ->where('product_id = ?', $productId)
+            // Exclude 301 redirect rows (options R/RP): they cache nothing, so warming them is
+            // wasted work and purging them is a no-op. COALESCE keeps this portable (options is
+            // NULL on some engines, '' on others) for a non-redirect row.
+            ->where("COALESCE(options, '') = ''")
             ->distinct(true);
 
         return array_values(array_filter(array_map('strval', $read->fetchCol($select))));
