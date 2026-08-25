@@ -1146,6 +1146,64 @@ class Mageaustralia_Fpc_Model_Observer
         return str_starts_with($ua, 'MahoFPC-Warmup/');
     }
 
+    // ── Request Normalisation ───────────────────────────────────────
+
+    /**
+     * Strip inbound tracking params (the miss_uri_params: srsltid, utm_*, gclid, …)
+     * from the request BEFORE the page renders, so every server-side URL build —
+     * og:url, the self-referencing breadcrumb, schema itemprop="url", all via
+     * getCurrentUrl() — emits the CLEAN url. Without this, a cold entry warmed by a
+     * Google Shopping/Ads (or bot) hit freezes that visitor's srsltid/utm into the
+     * page served to everyone, because buildCacheKey() already strips those params
+     * from the key while the rendered body kept them.
+     *
+     * Safe for attribution: only $_SERVER['REQUEST_URI'] / $_GET are rewritten
+     * (server side). The visitor's browser URL is untouched, so ordersource.js still
+     * reads the srsltid from window.location and records first/last touch. Content
+     * params (uri_params: p, q, …) are preserved — only tracking params are removed.
+     *
+     * Event: controller_action_predispatch (runs before the action renders).
+     */
+    public function stripTrackingParams(Maho\Event\Observer $observer): void
+    {
+        $helper = $this->getHelper();
+        if (!$helper->isEnabled()) {
+            return;
+        }
+
+        $missParams = $helper->getMissParams();
+        if ($missParams === []) {
+            return;
+        }
+
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        if (!str_contains($uri, '?')) {
+            return;
+        }
+
+        [$path, $queryString] = explode('?', $uri, 2);
+        parse_str($queryString, $params);
+
+        $removed = false;
+        foreach ($missParams as $param) {
+            if (array_key_exists($param, $params)) {
+                unset($params[$param], $_GET[$param]);
+                $removed = true;
+            }
+        }
+        if (!$removed) {
+            return;
+        }
+
+        $newQuery = http_build_query($params);
+        $newUri = $newQuery !== '' ? $path . '?' . $newQuery : $path;
+
+        // getCurrentUrl() reads $_SERVER['REQUEST_URI'] via Request::getServer();
+        // keep the request object's URI in sync too.
+        $_SERVER['REQUEST_URI'] = $newUri;
+        Mage::app()->getRequest()->setRequestUri($newUri);
+    }
+
     // ── Lazy Accessors ──────────────────────────────────────────────
 
     private function getHelper(): Mageaustralia_Fpc_Helper_Data

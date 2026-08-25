@@ -64,6 +64,11 @@
             <!-- Cache read: check for cached response before routing -->
             <controller_action_predispatch>
                 <observers>
+                    <mageaustralia_fpc_strip_tracking>
+                        <type>singleton</type>
+                        <class>Mageaustralia_Fpc_Model_Observer</class>
+                        <method>stripTrackingParams</method>
+                    </mageaustralia_fpc_strip_tracking>
                     <mageaustralia_fpc_hit>
                         <type>singleton</type>
                         <class>Mageaustralia_Fpc_Model_Observer</class>
