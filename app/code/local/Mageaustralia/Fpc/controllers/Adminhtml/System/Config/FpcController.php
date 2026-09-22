@@ -19,7 +19,10 @@ class Mageaustralia_Fpc_Adminhtml_System_Config_FpcController extends Mage_Admin
     #[\Override]
     public function preDispatch(): void
     {
-        $this->_setForcedFormKeyActions(['flush']);
+        // Removed in Maho 26.9, where core key-checks every admin request itself
+        if (method_exists($this, '_setForcedFormKeyActions')) {
+            $this->_setForcedFormKeyActions(['flush']);
+        }
         parent::preDispatch();
     }
 
