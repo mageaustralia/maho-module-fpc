@@ -13,7 +13,7 @@
     ],
     "require": {
         "php": ">=8.3",
-        "mahocommerce/maho": "^26.5"
+        "mahocommerce/maho": ">=26.5 <26.9"
     },
     "autoload": {
         "psr-0": {
