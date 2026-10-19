@@ -239,7 +239,7 @@
             </mageaustralia_fpc_async_flush>
             <mageaustralia_fpc_cleanup>
                 <schedule>
-                    <cron_expr>0 */6 * * *</cron_expr>
+                    <cron_expr>*/30 * * * *</cron_expr>
                 </schedule>
                 <run>
                     <model>mageaustralia_fpc/observer::cleanExpiredCache</model>
@@ -324,6 +324,9 @@
             <fpc>
                 <enabled>0</enabled>
                 <lifetime>86400</lifetime>
+                <lifetime_filtered>1800</lifetime_filtered>
+                <max_filter_depth>2</max_filter_depth>
+                <max_ttfb_ms>60000</max_ttfb_ms>
                 <show_age>0</show_age>
                 <cdn_max_age>60</cdn_max_age>
                 <cache_actions>cms_index_index

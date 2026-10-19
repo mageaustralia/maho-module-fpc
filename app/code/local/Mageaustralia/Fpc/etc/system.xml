@@ -51,6 +51,36 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </lifetime>
+                        <lifetime_filtered translate="label comment">
+                            <label>Filter Page Lifetime</label>
+                            <comment>Seconds before layered-navigation /shop/ filter pages expire. Their URL space is unbounded, so they are held briefly to absorb bursts rather than kept for a day. Default: 1800 (30 minutes).</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/lifetime_filtered</config_path>
+                            <sort_order>21</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </lifetime_filtered>
+                        <max_filter_depth translate="label comment">
+                            <label>Max Filter Depth To Cache</label>
+                            <comment>Deepest layered-navigation combination still written to cache. Each path segment and each "--" joined value counts as one. Beyond this the page still renders, it is just not cached, so a crawler walking permutations cannot fill the disk. Default: 2.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/max_filter_depth</config_path>
+                            <sort_order>22</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </max_filter_depth>
+                        <max_ttfb_ms translate="label comment">
+                            <label>Max Recorded TTFB (ms)</label>
+                            <comment>Browser-reported load times above this are discarded instead of stored, so a suspended tab reporting minutes cannot distort the stats. Default: 60000 (60 seconds).</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/max_ttfb_ms</config_path>
+                            <sort_order>23</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </max_ttfb_ms>
                         <cdn_max_age translate="label comment">
                             <label>CDN Max-Age</label>
                             <comment>Cache-Control max-age in seconds for CDN layer. Default: 60.</comment>

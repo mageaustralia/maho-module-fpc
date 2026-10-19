@@ -35,9 +35,68 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         return Mage::getStoreConfigFlag('system/fpc/enabled');
     }
 
-    public function getCacheLifetime(): int
+    /**
+     * Cache lifetime in seconds. Layered-navigation filter pages get their own
+     * (shorter) lifetime: their URL space is combinatorially unbounded, so they
+     * are cached briefly to absorb bursts rather than retained for a day.
+     */
+    public function getCacheLifetime(?string $path = null): int
     {
+        if ($path !== null && $this->isFilterPath($path)) {
+            return (int) (Mage::getStoreConfig('system/fpc/lifetime_filtered') ?: 1800);
+        }
+
         return (int) (Mage::getStoreConfig('system/fpc/lifetime') ?: 86400);
+    }
+
+    /**
+     * Layered-navigation filter page, e.g. /shoes/shop/nike.html. Accepts both
+     * request paths and cache keys (which have no leading slash).
+     */
+    public function isFilterPath(string $path): bool
+    {
+        return str_contains($path, '/shop/') || str_starts_with(ltrim($path, '/'), 'shop/');
+    }
+
+    /**
+     * Count stacked filter selections in a layered-nav path. A single brand page
+     * (/shoes/shop/nike.html) is depth 1; each extra path segment and each "--"
+     * joined value adds one, so
+     * /clearance/shop/a--b--c/babolat/bags.html is depth 5.
+     */
+    public function getFilterDepth(string $path): int
+    {
+        if (!$this->isFilterPath($path)) {
+            return 0;
+        }
+
+        $pos = strpos($path, '/shop/');
+        $tail = $pos === false ? ltrim($path, '/') : substr($path, $pos + 6);
+        if (str_starts_with($tail, 'shop/')) {
+            $tail = substr($tail, 5);
+        }
+
+        $tail = (string) preg_replace('/\.[a-z0-9]+$/i', '', $tail);
+        $depth = 0;
+        foreach (explode('/', $tail) as $segment) {
+            if ($segment !== '') {
+                $depth += substr_count($segment, '--') + 1;
+            }
+        }
+
+        return $depth;
+    }
+
+    /** Deepest filter combination still worth caching. */
+    public function getMaxFilterDepth(): int
+    {
+        return (int) (Mage::getStoreConfig('system/fpc/max_filter_depth') ?: 2);
+    }
+
+    /** Upper bound for a browser-reported TTFB before it is discarded. */
+    public function getMaxTtfbMs(): int
+    {
+        return (int) (Mage::getStoreConfig('system/fpc/max_ttfb_ms') ?: 60000);
     }
 
     public function getCdnMaxAge(): int
@@ -347,7 +406,30 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         // matching try_files rule keyed on the fpc_cur cookie is added).
         if ($this->varyByCurrency()) {
             $store = Mage::app()->getStore();
-            $currency = (string) $store->getCurrentCurrencyCode();
+            $allowed = $store->getAvailableCurrencyCodes();
+            $cookie = Mage::getSingleton('core/cookie');
+            $cookieCur = strtoupper((string) $cookie->get('fpc_cur'));
+            if ($cookieCur !== '' && is_array($allowed) && in_array($cookieCur, $allowed, true)) {
+                $currency = $cookieCur;
+            } else {
+                // No cookie: mirror nginx (routes cookieless visitors to __c<CODE> by
+                // CF-IPCountry). Resolve the SAME geo currency so checkCache's key matches
+                // nginx and PHP does not serve the shared bare hit. Skip on manual override.
+                $currency = (string) $store->getCurrentCurrencyCode();
+                $override = (string) $cookie->get('currency_override');
+                if ($override === '' && Mage::helper('core')->isModuleEnabled('Mageaustralia_Geoip')
+                    && Mage::helper('mageaustralia_geoip')->isEnabled()
+                ) {
+                    $country = (string) Mage::getSingleton('mageaustralia_geoip/detector')->detect();
+                    $rule = Mage::getSingleton('mageaustralia_geoip/ruleMatcher')->match($country);
+                    if (is_array($rule) && !empty($rule['currency'])) {
+                        $geoCur = strtoupper((string) $rule['currency']);
+                        if (is_array($allowed) && in_array($geoCur, $allowed, true)) {
+                            $currency = $geoCur;
+                        }
+                    }
+                }
+            }
             if ($currency !== '' && $currency !== (string) $store->getDefaultCurrencyCode()) {
                 $suffix .= '__c' . $this->sanitizePathSegment($currency);
             }
@@ -431,8 +513,18 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             $request = Mage::app()->getRequest();
         }
 
-        $query = $request->getQuery();
-        if (empty($query)) {
+        // Use the raw query string, NOT $request->getQuery(): a custom router
+        // can inject its own params into the request object (Amasty ShopBy adds
+        // brand_id when it resolves a /shop/ filter URL), which made every such
+        // page look like it carried an unknown query param and blocked caching
+        // for URLs that have no query string at all.
+        $queryString = (string) ($_SERVER['QUERY_STRING'] ?? '');
+        if ($queryString === '') {
+            return false;
+        }
+
+        parse_str($queryString, $query);
+        if ($query === []) {
             return false;
         }
 
@@ -440,7 +532,7 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
         $missParams = $this->getMissParams();
         $knownParams = array_merge($allowedParams, $missParams);
 
-        foreach ($query as $key => $value) {
+        foreach (array_keys($query) as $key) {
             if (!in_array($key, $knownParams, true)) {
                 return true;
             }

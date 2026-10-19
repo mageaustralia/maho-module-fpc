@@ -40,7 +40,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
                 $db->insert($table, [
                     'event_type' => 'hit',
                     'url_path'   => ltrim(substr($pagePath, 0, 500), '/'),
-                    'ttfb_ms'    => (int) $this->getRequest()->getParam('ttfb', 0),
+                    'ttfb_ms'    => $this->sanitizeTtfb($this->getRequest()->getParam('ttfb')),
                     'store_code' => Mage::app()->getStore()->getCode(),
                     'created_at' => date('Y-m-d H:i:s'),
                 ]);
@@ -50,6 +50,7 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
         }
 
         $blockParam = trim((string) $this->getRequest()->getParam('blocks', ''));
+
 
         $requestedNames = $blockParam !== ''
             ? array_filter(array_map('trim', explode(',', $blockParam)))
@@ -266,5 +267,29 @@ class Mageaustralia_Fpc_DynamicController extends Mage_Core_Controller_Front_Act
             ->setHeader('Content-Type', 'application/json', true)
             ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate', true)
             ->setBody(json_encode($data, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Browser-reported TTFB is untrusted input: this endpoint is public, and a
+     * backgrounded or suspended tab can report minutes (values in the millions
+     * of ms have been recorded). Anything outside a plausible range is stored
+     * as NULL rather than clamped, so it is excluded from averages and p95
+     * instead of dragging them toward the bound.
+     */
+    private function sanitizeTtfb(mixed $raw): ?int
+    {
+        if (!is_numeric($raw)) {
+            return null;
+        }
+
+        $ms = (int) $raw;
+        if ($ms <= 0) {
+            return null;
+        }
+
+        /** @var Mageaustralia_Fpc_Helper_Data $helper */
+        $helper = Mage::helper('mageaustralia_fpc');
+
+        return $ms > $helper->getMaxTtfbMs() ? null : $ms;
     }
 }

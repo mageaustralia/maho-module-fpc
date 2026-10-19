@@ -41,6 +41,15 @@ class Mageaustralia_Fpc_Model_Observer
     // ── Cache Write ─────────────────────────────────────────────────
 
     /**
+     * True when the HTML contains a non-empty session message list
+     * (<ul class="messages"><li>...), i.e. a flash message for the current visitor.
+     */
+    protected function hasRenderedMessages(string $html): bool
+    {
+        return (bool) preg_match('~<ul\s[^>]*class="[^"]*\bmessages\b[^"]*"[^>]*>\s*<li\b~i', $html);
+    }
+
+    /**
      * Capture the response HTML and save it to static cache files.
      *
      * Event: controller_front_send_response_before
@@ -127,6 +136,15 @@ class Mageaustralia_Fpc_Model_Observer
             return;
         }
 
+        // Filter URLs are combinatorially unbounded, so only shallow ones are
+        // cached - otherwise a crawler walking permutations fills the disk.
+        $requestPath = trim((string) ($request->getOriginalPathInfo() ?: $request->getPathInfo()), '/');
+        if ($helper->isFilterPath($requestPath)
+            && $helper->getFilterDepth($requestPath) > $helper->getMaxFilterDepth()
+        ) {
+            return;
+        }
+
         // Check for bypass handles
         $layout = Mage::app()->getLayout();
         if ($layout) {
@@ -144,6 +162,13 @@ class Mageaustralia_Fpc_Model_Observer
 
         $html = $response->getBody();
         if ($html === '' || $html === false) {
+            return;
+        }
+
+        // Never cache a page that rendered a session message (e.g. "Please specify the
+        // product's option(s)" after a failed add-to-cart redirect). The message belongs
+        // to one visitor's session; caching it would show it to everyone until the next flush.
+        if ($this->hasRenderedMessages($html)) {
             return;
         }
 
@@ -215,6 +240,15 @@ class Mageaustralia_Fpc_Model_Observer
             . $request->getRequestedActionName();
 
         if (!$helper->isCacheableAction($fullActionName)) {
+            return;
+        }
+
+        // Filter URLs are combinatorially unbounded, so only shallow ones are
+        // cached - otherwise a crawler walking permutations fills the disk.
+        $requestPath = trim((string) ($request->getOriginalPathInfo() ?: $request->getPathInfo()), '/');
+        if ($helper->isFilterPath($requestPath)
+            && $helper->getFilterDepth($requestPath) > $helper->getMaxFilterDepth()
+        ) {
             return;
         }
 
@@ -816,7 +850,6 @@ class Mageaustralia_Fpc_Model_Observer
             return;
         }
 
-        $lifetime = $helper->getCacheLifetime();
         $now = time();
         $count = 0;
 
@@ -828,6 +861,9 @@ class Mageaustralia_Fpc_Model_Observer
         foreach ($items as $item) {
             if ($item->isFile()) {
                 $mtime = $item->getMTime();
+                // Per-path lifetime: filter pages expire far sooner than the rest.
+                $relPath = ltrim(substr($item->getPathname(), strlen($fpcDir)), '/');
+                $lifetime = $helper->getCacheLifetime($relPath);
                 if (($now - $mtime) > $lifetime) {
                     @unlink($item->getPathname());
                     $count++;
@@ -1004,7 +1040,6 @@ class Mageaustralia_Fpc_Model_Observer
         $warmup = Mage::getModel('mageaustralia_fpc/warmup');
         $warmup->runBatch();
     }
-
 
     // ── Stats Logging ───────────────────────────────────────────────
 

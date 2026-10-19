@@ -44,7 +44,7 @@ class Mageaustralia_Fpc_Model_Cache
 
         // Check expiry
         $mtime = filemtime($checkFile);
-        $lifetime = $this->helper->getCacheLifetime();
+        $lifetime = $this->helper->getCacheLifetime($cacheKey);
 
         if ($mtime !== false && (time() - $mtime) > $lifetime) {
             $this->remove($cacheKey);
@@ -191,7 +191,24 @@ class Mageaustralia_Fpc_Model_Cache
             }
             $storeBaseUrl = rtrim($store->getBaseUrl(Mage_Core_Model_Store::URL_TYPE_WEB), '/');
             foreach ($paths as $rawPath) {
-                $urls[] = $storeBaseUrl . '/' . trim((string) $rawPath, '/');
+                $path = trim((string) $rawPath, '/');
+
+                // Warm only browsable URLs. getUrl() falls back to the raw
+                // catalog/category/view/<id> (or product/view) form when an entity has no
+                // rewrite - a disabled category being the common case - and that form always
+                // 404s. Individual callers filter their own output, but purgeByPaths() has
+                // nine call sites and is the one point every purge passes through, so the
+                // guard belongs here as well. Left unguarded, the warm-up crawler requests a
+                // guaranteed 404 on every purge and the 404 manager records each one as if it
+                // were a broken inbound link, burying real 404s in our own noise.
+                //
+                // Deliberately warm-only: $paths is still purged in full below. A disabled
+                // category must have its cached page dropped, it just must not be re-fetched.
+                if (!$this->helper->isRewrittenPath($path)) {
+                    continue;
+                }
+
+                $urls[] = $storeBaseUrl . '/' . $path;
             }
         }
 

@@ -29,35 +29,28 @@
 (function () {
     'use strict';
 
+    // NOTE: we do NOT cache `window.FPC_CONFIG` at parse time. The fpc.config
+
     // Re-execute <script> tags inside an element after innerHTML insertion.
-    // Browsers PARSE script HTML inserted that way but skip EXECUTION (a
-    // security boundary). Walking the freshly-set DOM, cloning each <script>
-    // into a real script element, and replacing it in place forces the
-    // browser to execute as if the script had been part of the original
-    // page load.
-    //
-    // Without this, any inline initialiser shipped inside a dynamic block
-    // template silently no-ops. Concrete consequences from the field:
-    // VarienForm('header-login-form') never wires the header login form;
-    // SocialLogin's passwordless block's initRoot() never binds the magic
-    // link and SMS OTP button click handlers — they render but do nothing.
+    // The browser parses script HTML but skips execution when added via
+    // innerHTML — we have to clone each one into a real script element.
     function executeInjectedScripts(container) {
         if (!container) return;
         var scripts = container.querySelectorAll('script');
         for (var i = 0; i < scripts.length; i++) {
             var oldScript = scripts[i];
             var newScript = document.createElement('script');
-            // Preserve attributes so type=module / src / nonce are honoured
+            // Copy attributes so type=module / src / nonce are preserved
             for (var k = 0; k < oldScript.attributes.length; k++) {
                 var a = oldScript.attributes[k];
                 newScript.setAttribute(a.name, a.value);
             }
             if (oldScript.textContent) newScript.textContent = oldScript.textContent;
+            // Replace in place so execution order is preserved
             oldScript.parentNode.replaceChild(newScript, oldScript);
         }
     }
 
-    // NOTE: we do NOT cache `window.FPC_CONFIG` at parse time. The fpc.config
     // inline script is emitted by Mage_Page_Block_Html_Head AFTER all addJs
     // scripts — so at the moment loader.js is parsed, FPC_CONFIG doesn't
     // exist yet. Reading it from a local variable captured here would give
@@ -321,9 +314,15 @@
             if (!data || !data.success || !data.blocks) return;
 
             // Replace [data-fpc-block] placeholders with block HTML.
-            // executeInjectedScripts re-runs any inline initialisers the
-            // template ships — innerHTML alone parses <script> tags but
-            // never executes them.
+            //
+            // innerHTML insertion does NOT execute <script> tags in the new
+            // HTML (browser security restriction). Without help, any inline
+            // initializer the template ships (e.g. VarienForm hookup for the
+            // header login form, magic-link AJAX binders, SMS-OTP click
+            // handlers) never runs and the buttons appear dead.
+            // executeInjectedScripts() walks the freshly-set DOM, copies
+            // each <script> into a real script element, and appends it back
+            // so the browser executes it like a normal load.
             var currentPlaceholders = document.querySelectorAll('[data-fpc-block]');
             for (var j = 0; j < currentPlaceholders.length; j++) {
                 var blockName = currentPlaceholders[j].getAttribute('data-fpc-block');
@@ -331,6 +330,14 @@
                     currentPlaceholders[j].innerHTML = data.blocks[blockName];
                     executeInjectedScripts(currentPlaceholders[j]);
                 }
+            }
+
+            // Re-init social-login buttons: the account dropdown hole-punch replaces
+            // #social-login-buttons with a fresh node, so the client-side Google GSI
+            // button must be re-rendered. init() is idempotent and re-binds to the
+            // new container (same path Turbo page swaps use).
+            if (window.MahoSocialLogin && typeof MahoSocialLogin.init === 'function') {
+                MahoSocialLogin.init();
             }
 
             // Update count badges (data-attribute driven)
@@ -368,27 +375,31 @@
             if (contentAttr) contentSel = contentAttr.getAttribute('data-fpc-minicart-content');
 
             if (triggerSel && contentSel) {
-                var cartWrapper = document.querySelector(triggerSel);
-                if (cartWrapper && !cartWrapper._fpcMinicartBound) {
+                // Populate on HOVER/FOCUS (the desktop dropdown opens on hover)
+                // as well as CLICK (mobile offcanvas). A click-only binding left
+                // the desktop dropdown showing the stale FPC-cached (empty) cart.
+                var _fpcRefreshMinicart = function() {
+                    var blockContent = document.querySelector(contentSel);
+                    if (!blockContent) return;
+                    if (_fpcRefreshMinicart._loading) return; // in-flight guard
+                    _fpcRefreshMinicart._loading = true;
+                    // /fpc/dynamic/minicart/ returns raw HTML (text/html), NOT
+                    // JSON. Use fetch().text() directly instead of _fpcFetch.
+                    var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/?referer=' + encodeURIComponent(window.location.href);
+                    window.fetch(minicartUrl, { credentials: 'same-origin' })
+                    .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
+                    .then(function(html) { if (html && html.trim()) { blockContent.innerHTML = html; } })
+                    .catch(function() {})
+                    .then(function() { _fpcRefreshMinicart._loading = false; });
+                };
+                // Bind every matching trigger (mobile + desktop can both exist).
+                document.querySelectorAll(triggerSel).forEach(function(cartWrapper) {
+                    if (cartWrapper._fpcMinicartBound) return;
                     cartWrapper._fpcMinicartBound = true;
-                    cartWrapper.addEventListener('click', function() {
-                        var blockContent = document.querySelector(contentSel);
-                        if (!blockContent) return;
-                        // /fpc/dynamic/minicart/ returns raw HTML (text/html),
-                        // NOT JSON. Use fetch().text() directly instead of
-                        // _fpcFetch which calls r.json() and would throw.
-                        var minicartUrl = window.location.origin + '/fpc/dynamic/minicart/?referer=' + encodeURIComponent(window.location.href);
-                        window.fetch(minicartUrl, { credentials: 'same-origin' })
-                        .then(function(r) { return r.ok ? r.text() : Promise.reject(); })
-                        .then(function(html) {
-                            if (html && html.trim()) {
-                                blockContent.innerHTML = html;
-                                executeInjectedScripts(blockContent);
-                            }
-                        })
-                        .catch(function() {});
-                    });
-                }
+                    cartWrapper.addEventListener('mouseenter', _fpcRefreshMinicart);
+                    cartWrapper.addEventListener('focusin', _fpcRefreshMinicart);
+                    cartWrapper.addEventListener('click', _fpcRefreshMinicart);
+                });
             }
 
             // Update form keys everywhere
