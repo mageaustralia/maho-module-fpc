@@ -325,6 +325,7 @@
                 <enabled>0</enabled>
                 <lifetime>86400</lifetime>
                 <lifetime_filtered>1800</lifetime_filtered>
+                <filter_path_marker>/shop/</filter_path_marker>
                 <max_filter_depth>2</max_filter_depth>
                 <max_ttfb_ms>60000</max_ttfb_ms>
                 <show_age>0</show_age>

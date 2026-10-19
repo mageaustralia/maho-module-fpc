@@ -61,6 +61,16 @@
                             <show_in_website>0</show_in_website>
                             <show_in_store>0</show_in_store>
                         </lifetime_filtered>
+                        <filter_path_marker translate="label comment">
+                            <label>Filter Path Segment</label>
+                            <comment>URL segment that marks a layered-navigation filter page (e.g. /shop/ for /shoes/shop/nike.html). Pages containing it use the shorter filter lifetime and the depth cap. Leave empty if your store has no such segment.</comment>
+                            <frontend_type>text</frontend_type>
+                            <config_path>system/fpc/filter_path_marker</config_path>
+                            <sort_order>21</sort_order>
+                            <show_in_default>1</show_in_default>
+                            <show_in_website>0</show_in_website>
+                            <show_in_store>0</show_in_store>
+                        </filter_path_marker>
                         <max_filter_depth translate="label comment">
                             <label>Max Filter Depth To Cache</label>
                             <comment>Deepest layered-navigation combination still written to cache. Each path segment and each "--" joined value counts as one. Beyond this the page still renders, it is just not cached, so a crawler walking permutations cannot fill the disk. Default: 2.</comment>

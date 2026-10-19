@@ -50,12 +50,29 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
     }
 
     /**
-     * Layered-navigation filter page, e.g. /shoes/shop/nike.html. Accepts both
+     * Layered-navigation filter page, e.g. /shoes/shop/nike.html (marker segment is configurable). Accepts both
      * request paths and cache keys (which have no leading slash).
      */
     public function isFilterPath(string $path): bool
     {
-        return str_contains($path, '/shop/') || str_starts_with(ltrim($path, '/'), 'shop/');
+        $marker = $this->getFilterPathMarker();
+        if ($marker === '') {
+            return false;
+        }
+
+        return str_contains($path, $marker) || str_starts_with(ltrim($path, '/'), ltrim($marker, '/'));
+    }
+
+    /**
+     * URL segment that marks a layered-navigation filter page, normalised to
+     * "/segment/". Empty when the store has no such segment (feature off).
+     */
+    public function getFilterPathMarker(): string
+    {
+        $configured = Mage::getStoreConfig('system/fpc/filter_path_marker');
+        $segment = trim((string) ($configured ?? '/shop/'), " \t\n\r\0\x0B/");
+
+        return $segment === '' ? '' : '/' . $segment . '/';
     }
 
     /**
@@ -70,10 +87,12 @@ class Mageaustralia_Fpc_Helper_Data extends Mage_Core_Helper_Abstract
             return 0;
         }
 
-        $pos = strpos($path, '/shop/');
-        $tail = $pos === false ? ltrim($path, '/') : substr($path, $pos + 6);
-        if (str_starts_with($tail, 'shop/')) {
-            $tail = substr($tail, 5);
+        $marker = $this->getFilterPathMarker();
+        $pos = strpos($path, $marker);
+        $tail = $pos === false ? ltrim($path, '/') : substr($path, $pos + strlen($marker));
+        $bare = ltrim($marker, '/');
+        if (str_starts_with($tail, $bare)) {
+            $tail = substr($tail, strlen($bare));
         }
 
         $tail = (string) preg_replace('/\.[a-z0-9]+$/i', '', $tail);
